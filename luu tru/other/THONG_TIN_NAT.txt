@@ -1,0 +1,47 @@
+========================================
+   THONG TIN NAT CONFIGURATION
+========================================
+
+Local IP (IP noi bo): 192.168.1.3
+Public IP: 113.22.30.49
+
+========================================
+   CAU HINH PORT FORWARDING
+========================================
+
+Tren router, cau hinh:
+
+Service Name: Trading Bot Frontend
+External Port: 3000
+Internal Port: 3000
+Internal IP: 192.168.1.3
+Protocol: TCP
+Status: Enabled
+
+========================================
+   URL CONG KHAI
+========================================
+
+Sau khi cau hinh xong:
+http://113.22.30.49:3000
+
+========================================
+   CAC BUOC
+========================================
+
+1. Mo port 3000 trong firewall:
+   MO_PORT_FIREWALL.bat
+
+2. Cau hinh Port Forwarding tren router:
+   - Dang nhap router: 192.168.1.1 (hoac IP router cua ban)
+   - Vao Port Forwarding
+   - Them rule nhu tren
+
+3. Kiem tra:
+   KIEM_TRA_NAT.bat
+
+4. Truy cap tu internet:
+   http://[PUBLIC_IP]:3000
+
+========================================
+

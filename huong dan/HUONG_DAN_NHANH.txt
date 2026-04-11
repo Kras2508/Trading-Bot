@@ -1,0 +1,48 @@
+========================================
+HUONG DAN NHANH - TRADING BOT BACKEND
+========================================
+
+CACH 1: SU DUNG SCRIPT (DE NHAT)
+---------------------------------
+1. Chay: CAI_DAT.bat (de cai dat dependencies)
+2. Chay: CHAY_SERVER.bat (de khoi dong server)
+
+CACH 2: CHAY THU CONG
+---------------------------------
+1. Cai dat dependencies:
+   python -m pip install -r requirements.txt
+
+2. Tao file .env (neu chua co):
+   - Copy .env.example thanh .env
+   - Hoac chay CHAY_SERVER.bat (no se tu tao .env)
+
+3. Chay server:
+   python -m uvicorn app.main:app --reload
+
+   HOAC:
+   python run.py
+
+QUAN TRONG:
+---------------------------------
+- DUNG DUNG: uvicorn app.main:app --reload
+- DUNG DUNG: python -m uvicorn app.main:app --reload
+
+KIEM TRA:
+---------------------------------
+Sau khi server chay, mo trinh duyet:
+- API Docs: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+
+LOI THUONG GAP:
+---------------------------------
+1. "uvicorn is not recognized"
+   => Dung: python -m uvicorn app.main:app --reload
+
+2. "Module not found"
+   => Chay: python -m pip install -r requirements.txt
+
+3. "Port 8000 already in use"
+   => Doi port: --port 8001
+
+========================================
+
