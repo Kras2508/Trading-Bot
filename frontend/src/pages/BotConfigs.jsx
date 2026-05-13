@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 
@@ -7,10 +7,16 @@ export default function BotConfigs() {
   const [configs, setConfigs] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [editFormData, setEditFormData] = useState(null)
   const [editErrors, setEditErrors] = useState({})
   const [editSubmitting, setEditSubmitting] = useState(false)
-  const [flashMessage, setFlashMessage] = useState(null)
+  const [createErrors, setCreateErrors] = useState({})
+  const [createSubmitting, setCreateSubmitting] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastTimeoutRef = useRef(null)
 
   const defaultFormData = {
     name: '',
@@ -31,6 +37,14 @@ export default function BotConfigs() {
     fetchConfigs()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const fetchConfigs = async () => {
     try {
       const response = await axios.get('/api/config/', {
@@ -49,9 +63,20 @@ export default function BotConfigs() {
 
   const resetCreateForm = () => {
     setFormData(defaultFormData)
+    setCreateErrors({})
   }
 
-  const validateEditForm = (data) => {
+  const showToast = (type, text) => {
+    setToast({ type, text })
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }
+
+  const validateConfigForm = (data) => {
     const errors = {}
     const symbolPattern = /^[A-Za-z0-9]+(\/[A-Za-z0-9]+)?(\.D)?$/
 
@@ -145,9 +170,13 @@ export default function BotConfigs() {
     }
   }
 
+  const openCreateModal = () => {
+    setCreateErrors({})
+    setShowModal(true)
+  }
+
   const openEditModal = (config) => {
     setEditErrors({})
-    setFlashMessage(null)
     setEditFormData({
       id: config.id,
       name: config.name || '',
@@ -172,8 +201,29 @@ export default function BotConfigs() {
     setShowEditModal(true)
   }
 
+  const openDeleteModal = (config) => {
+    setDeleteTarget(config)
+    setShowDeleteModal(true)
+  }
+
+  const closeDeleteModal = () => {
+    if (deleteSubmitting) {
+      return
+    }
+    setShowDeleteModal(false)
+    setDeleteTarget(null)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    const { errors, isValid } = validateConfigForm(formData)
+    if (!isValid) {
+      setCreateErrors(errors)
+      return
+    }
+
+    setCreateSubmitting(true)
+    setCreateErrors({})
     try {
       await axios.post('/api/config/', formData, {
         headers: {
@@ -183,8 +233,11 @@ export default function BotConfigs() {
       setShowModal(false)
       fetchConfigs()
       resetCreateForm()
+      showToast('success', 'Tạo bot config thành công.')
     } catch (error) {
-      alert('Lỗi: ' + (error.response?.data?.detail || 'Tạo config thất bại'))
+      showToast('danger', error.response?.data?.detail || 'Tạo config thất bại')
+    } finally {
+      setCreateSubmitting(false)
     }
   }
 
@@ -194,7 +247,7 @@ export default function BotConfigs() {
       return
     }
 
-    const { errors, isValid, parsedTpLevels } = validateEditForm(editFormData)
+    const { errors, isValid, parsedTpLevels } = validateConfigForm(editFormData)
     if (!isValid) {
       setEditErrors(errors)
       return
@@ -246,45 +299,50 @@ export default function BotConfigs() {
 
       setShowEditModal(false)
       setEditFormData(null)
-      setFlashMessage({ type: 'success', text: 'Cập nhật bot config thành công.' })
+      showToast('success', 'Cập nhật bot config thành công.')
       fetchConfigs()
     } catch (error) {
-      setFlashMessage({
-        type: 'danger',
-        text: error.response?.data?.detail || 'Cập nhật config thất bại'
-      })
+      showToast('danger', error.response?.data?.detail || 'Cập nhật config thất bại')
     } finally {
       setEditSubmitting(false)
     }
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Bạn có chắc muốn xóa config này?')) {
-      try {
-        await axios.delete(`/api/config/${id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        fetchConfigs()
-      } catch (error) {
-        alert('Lỗi: ' + (error.response?.data?.detail || 'Xóa thất bại'))
-      }
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) {
+      return
+    }
+    setDeleteSubmitting(true)
+    try {
+      await axios.delete(`/api/config/${deleteTarget.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      fetchConfigs()
+      showToast('success', 'Xóa bot config thành công.')
+      closeDeleteModal()
+    } catch (error) {
+      showToast('danger', error.response?.data?.detail || 'Xóa thất bại')
+    } finally {
+      setDeleteSubmitting(false)
     }
   }
 
-  const editValidation = editFormData ? validateEditForm(editFormData) : { isValid: false }
+  const editValidation = editFormData ? validateConfigForm(editFormData) : { isValid: false }
 
   return (
     <div>
-      {flashMessage && (
-        <div className={`alert alert-${flashMessage.type}`} role="alert">
-          {flashMessage.text}
+      {toast && (
+        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1080 }}>
+          <div className={`alert alert-${toast.type} shadow-sm mb-0`} role="alert">
+            {toast.text}
+          </div>
         </div>
       )}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2>Bot Configurations</h2>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+        <button className="btn btn-primary" onClick={openCreateModal}>
           <i className="bi bi-plus-circle me-2"></i>
           Tạo Config Mới
         </button>
@@ -336,7 +394,7 @@ export default function BotConfigs() {
                     </button>
                     <button
                       className="btn btn-sm btn-danger"
-                      onClick={() => handleDelete(config.id)}
+                      onClick={() => openDeleteModal(config)}
                     >
                       Xóa
                     </button>
@@ -362,27 +420,29 @@ export default function BotConfigs() {
                     <label className="form-label">Tên Bot</label>
                     <input
                       type="text"
-                      className="form-control"
+                      className={`form-control ${createErrors.name ? 'is-invalid' : ''}`}
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
                     />
+                    {createErrors.name && <div className="invalid-feedback">{createErrors.name}</div>}
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Symbol</label>
                     <input
                       type="text"
-                      className="form-control"
+                      className={`form-control ${createErrors.symbol ? 'is-invalid' : ''}`}
                       value={formData.symbol}
                       onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
                       placeholder="BTC/USDT"
                       required
                     />
+                    {createErrors.symbol && <div className="invalid-feedback">{createErrors.symbol}</div>}
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Sàn Giao Dịch</label>
                     <select
-                      className="form-select"
+                      className={`form-select ${createErrors.exchange ? 'is-invalid' : ''}`}
                       value={formData.exchange}
                       onChange={(e) => setFormData({ ...formData, exchange: e.target.value })}
                       required
@@ -398,6 +458,7 @@ export default function BotConfigs() {
                       <option value="kraken">Kraken</option>
                       <option value="bitfinex">Bitfinex</option>
                     </select>
+                    {createErrors.exchange && <div className="invalid-feedback">{createErrors.exchange}</div>}
                     <small className="form-text text-muted">
                       Chọn sàn giao dịch bạn muốn sử dụng
                     </small>
@@ -408,12 +469,13 @@ export default function BotConfigs() {
                         <label className="form-label">Amount</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className={`form-control ${createErrors.amount ? 'is-invalid' : ''}`}
                           value={formData.amount}
                           onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                           step="0.01"
                           required
                         />
+                        {createErrors.amount && <div className="invalid-feedback">{createErrors.amount}</div>}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -421,12 +483,13 @@ export default function BotConfigs() {
                         <label className="form-label">Leverage</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className={`form-control ${createErrors.leverage ? 'is-invalid' : ''}`}
                           value={formData.leverage}
-                          onChange={(e) => setFormData({ ...formData, leverage: parseInt(e.target.value) })}
+                          onChange={(e) => setFormData({ ...formData, leverage: e.target.value })}
                           min="1"
                           max="125"
                         />
+                        {createErrors.leverage && <div className="invalid-feedback">{createErrors.leverage}</div>}
                       </div>
                     </div>
                   </div>
@@ -436,12 +499,15 @@ export default function BotConfigs() {
                         <label className="form-label">Stop Loss (%)</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className={`form-control ${createErrors.stop_loss_percent ? 'is-invalid' : ''}`}
                           value={formData.stop_loss_percent}
                           onChange={(e) => setFormData({ ...formData, stop_loss_percent: e.target.value })}
                           step="0.1"
                           required
                         />
+                        {createErrors.stop_loss_percent && (
+                          <div className="invalid-feedback">{createErrors.stop_loss_percent}</div>
+                        )}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -449,12 +515,15 @@ export default function BotConfigs() {
                         <label className="form-label">Take Profit (%)</label>
                         <input
                           type="number"
-                          className="form-control"
+                          className={`form-control ${createErrors.take_profit_percent ? 'is-invalid' : ''}`}
                           value={formData.take_profit_percent}
                           onChange={(e) => setFormData({ ...formData, take_profit_percent: e.target.value })}
                           step="0.1"
                           required
                         />
+                        {createErrors.take_profit_percent && (
+                          <div className="invalid-feedback">{createErrors.take_profit_percent}</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -519,8 +588,8 @@ export default function BotConfigs() {
                   <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
                     Hủy
                   </button>
-                  <button type="submit" className="btn btn-primary">
-                    Tạo
+                  <button type="submit" className="btn btn-primary" disabled={createSubmitting}>
+                    {createSubmitting ? 'Đang tạo...' : 'Tạo'}
                   </button>
                 </div>
               </form>
@@ -801,6 +870,30 @@ export default function BotConfigs() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && deleteTarget && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Xác nhận xóa</h5>
+                <button className="btn-close" onClick={closeDeleteModal}></button>
+              </div>
+              <div className="modal-body">
+                Bạn có chắc muốn xóa bot <strong>{deleteTarget.name}</strong>?
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>
+                  Hủy
+                </button>
+                <button type="button" className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleteSubmitting}>
+                  {deleteSubmitting ? 'Đang xóa...' : 'Xóa'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
