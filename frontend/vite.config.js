@@ -12,7 +12,7 @@ export default defineConfig({
     allowedHosts: 'all', // Cho phép tất cả hosts (bao gồm ngrok)
     proxy: {
       '/api': {
-        // target: 'http://localhost:80', // Port 80 - chỉ định rõ ràng
+        //target: 'http://localhost:80', // Port 80 - chỉ định rõ ràng
         target: 'http://localhost:8000', // Port 8000 - khớp với CHAY_SERVER.bat
         changeOrigin: true,
         secure: false

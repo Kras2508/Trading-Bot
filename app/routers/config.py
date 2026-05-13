@@ -7,6 +7,7 @@ from app.models.bot_config import BotConfig
 from app.schemas.bot_config import BotConfigCreate, BotConfigUpdate, BotConfigResponse
 from app.core.security import verify_token, encrypt_data
 from app.services.activity_log_service import activity_log_service
+from app.services.bot_config_service import validate_create_payload, validate_update_payload
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,8 @@ async def create_config(
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    validated_data = validate_create_payload(config_data.model_dump())
     
     # Encrypt API credentials if provided
     api_key_encrypted = None
@@ -43,25 +46,25 @@ async def create_config(
     
     # Create config
     db_config = BotConfig(
-        name=config_data.name,
-        symbol=config_data.symbol,
-        exchange=config_data.exchange,
-        amount=config_data.amount,
-        leverage=config_data.leverage,
-        stop_loss_percent=config_data.stop_loss_percent,
-        take_profit_percent=config_data.take_profit_percent,
-        tp_levels=[tp.dict() for tp in (config_data.tp_levels or [])],
-        enable_trailing=config_data.enable_trailing,
-        trailing_type=config_data.trailing_type,
-        trailing_percent=config_data.trailing_percent,
-        trailing_atr_multiplier=config_data.trailing_atr_multiplier,
-        trailing_atr_period=config_data.trailing_atr_period,
+        name=validated_data["name"],
+        symbol=validated_data["symbol"],
+        exchange=validated_data["exchange"],
+        amount=validated_data["amount"],
+        leverage=validated_data["leverage"],
+        stop_loss_percent=validated_data["stop_loss_percent"],
+        take_profit_percent=validated_data["take_profit_percent"],
+        tp_levels=validated_data.get("tp_levels", []),
+        enable_trailing=validated_data["enable_trailing"],
+        trailing_type=validated_data["trailing_type"],
+        trailing_percent=validated_data.get("trailing_percent"),
+        trailing_atr_multiplier=validated_data.get("trailing_atr_multiplier"),
+        trailing_atr_period=validated_data["trailing_atr_period"],
         api_key_encrypted=api_key_encrypted,
         api_secret_encrypted=api_secret_encrypted,
-        ip_whitelist=config_data.ip_whitelist,
-        trading_mode=config_data.trading_mode,
-        max_open_positions=config_data.max_open_positions,
-        enable_notifications=config_data.enable_notifications,
+        ip_whitelist=validated_data.get("ip_whitelist"),
+        trading_mode=validated_data["trading_mode"],
+        max_open_positions=validated_data["max_open_positions"],
+        enable_notifications=validated_data["enable_notifications"],
         created_by=user.id
     )
     
@@ -137,16 +140,19 @@ async def update_config(
     # Update fields
     update_data = config_data.dict(exclude_unset=True)
     
+    update_data = validate_update_payload(update_data, config)
+
     # Handle API credentials encryption
-    if "api_key" in update_data and update_data["api_key"]:
+    if "api_key" in update_data and not update_data["api_key"]:
+        update_data.pop("api_key")
+    if "api_secret" in update_data and not update_data["api_secret"]:
+        update_data.pop("api_secret")
+
+    if "api_key" in update_data:
         update_data["api_key_encrypted"] = encrypt_data(update_data.pop("api_key"))
-    if "api_secret" in update_data and update_data["api_secret"]:
+    if "api_secret" in update_data:
         update_data["api_secret_encrypted"] = encrypt_data(update_data.pop("api_secret"))
-    
-    # Handle TP levels
-    if "tp_levels" in update_data and update_data["tp_levels"] is not None:
-        update_data["tp_levels"] = [tp.dict() if hasattr(tp, 'dict') else tp for tp in update_data["tp_levels"]]
-    
+
     for field, value in update_data.items():
         setattr(config, field, value)
     
@@ -172,21 +178,21 @@ async def delete_config(
     username: str = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    """Delete a bot configuration"""
+    """Delete a bot configuration and cleanup dependent data."""
     from app.models.order import Order
+    from app.models.bot_status import BotStatus
     
     config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Configuration not found")
     
-    # Check if there are orders associated with this config
-    orders_count = db.query(Order).filter(Order.bot_config_id == config_id).count()
-    
+    # Cleanup dependent records first to avoid FK constraint errors.
+    orders_query = db.query(Order).filter(Order.bot_config_id == config_id)
+    orders_count = orders_query.count()
     if orders_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete bot config: {orders_count} order(s) are associated with this config. Please delete or reassign orders first."
-        )
+        orders_query.delete(synchronize_session=False)
+
+    db.query(BotStatus).filter(BotStatus.bot_config_id == config_id).delete(synchronize_session=False)
     
     # Log activity
     activity_log_service.log_activity(
@@ -200,6 +206,6 @@ async def delete_config(
     db.delete(config)
     db.commit()
     
-    logger.info(f"Bot config deleted: {config.id} - {config.name}")
+    logger.info(f"Bot config deleted: {config.id} - {config.name} (deleted {orders_count} related orders)")
     return None
 

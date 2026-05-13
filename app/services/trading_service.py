@@ -54,6 +54,30 @@ class TradingService:
         # If we can't convert, return original (will fail with clear error)
         logger.warning(f"Could not normalize symbol format: {symbol}, returning as-is")
         return symbol
+
+    def _is_timestamp_error(self, error_message: str) -> bool:
+        """Check if an error is related to exchange timestamp drift."""
+        error_text = (error_message or "").lower()
+        return (
+            "timestamp" in error_text
+            or "-1021" in error_text
+            or "recvwindow" in error_text
+        )
+
+    def _sync_exchange_time(self, exchange: ccxt.Exchange) -> None:
+        """Force a fresh time-difference sync with the exchange server."""
+        try:
+            if hasattr(exchange, "load_time_difference"):
+                exchange.load_time_difference()
+                return
+
+            if hasattr(exchange, "fetch_time"):
+                server_time = exchange.fetch_time()
+                if isinstance(server_time, (int, float)):
+                    local_time = exchange.milliseconds()
+                    exchange.options["timeDifference"] = local_time - int(server_time)
+        except Exception as e:
+            logger.warning(f"Could not sync exchange time difference: {e}")
     
     def get_exchange(self, config: BotConfig) -> ccxt.Exchange:
         """Get or create exchange instance"""
@@ -80,6 +104,7 @@ class TradingService:
                 'enableRateLimit': True,
                 'options': {
                     'adjustForTimeDifference': True,  # Auto-adjust timestamp
+                    'recvWindow': 10000,              # More tolerant for network jitter
                 }
             }
             
@@ -107,6 +132,9 @@ class TradingService:
             # Normalize symbol from TradingView format to Binance format
             symbol = self.normalize_symbol(symbol, config.trading_mode)
             logger.info(f"Normalized symbol: {symbol} (trading_mode: {config.trading_mode})")
+
+            # Always re-sync time difference before signed requests.
+            self._sync_exchange_time(exchange)
             
             if config.trading_mode == 'futures' and config.leverage > 1:
                 # Set leverage for futures
@@ -145,16 +173,13 @@ class TradingService:
                     last_error = e
                     
                     # Check if it's a timestamp error
-                    if "timestamp" in error_str.lower() or "-1021" in error_str:
+                    if self._is_timestamp_error(error_str):
                         retry_count += 1
                         if retry_count <= max_retries:
                             logger.warning(f"Timestamp error detected (attempt {retry_count}/{max_retries}). Retrying...")
-                            # Force exchange to recalculate timestamp by clearing cache
-                            if hasattr(exchange, 'nonce'):
-                                # Reset nonce to force new timestamp calculation
-                                import time
-                                time.sleep(0.5)  # Wait a bit before retry
-                                continue
+                            self._sync_exchange_time(exchange)
+                            time.sleep(0.5 * retry_count)
+                            continue
                     
                     # If not timestamp error or max retries reached, break
                     break
@@ -164,8 +189,13 @@ class TradingService:
             error_msg = str(last_error)
             
             # Provide helpful message for timestamp errors
-            if "timestamp" in error_msg.lower() or "-1021" in error_msg:
-                error_msg = f"{error_msg}\n\n💡 Giải pháp: Vui lòng sync thời gian máy tính với server. Chạy script: FIX_TIMESTAMP_BINANCE.bat (cần quyền Admin)"
+            if self._is_timestamp_error(error_msg):
+                error_msg = (
+                    f"{error_msg}\n\n"
+                    "💡 Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
+                    "Vui lòng sync thời gian máy tính bằng script FIX_TIMESTAMP_BINANCE.bat (Run as Administrator), "
+                    "sau đó restart backend và thử lại."
+                )
             
             return {
                 "success": False,
