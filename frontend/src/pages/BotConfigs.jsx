@@ -326,6 +326,11 @@ export default function BotConfigs() {
                     <span className={`badge ${config.is_active ? 'bg-success' : 'bg-secondary'}`}>
                       {config.is_active ? 'Active' : 'Inactive'}
                     </span>
+                    {config.is_paused ? (
+                      <span className="badge bg-warning text-dark ms-1">Paused</span>
+                    ) : (
+                      config.is_active && <span className="badge bg-primary ms-1">Running</span>
+                    )}
                   </td>
                   <td>
                     <button

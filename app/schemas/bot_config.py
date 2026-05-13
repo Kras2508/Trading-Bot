@@ -73,6 +73,7 @@ class BotConfigResponse(BaseModel):
     max_open_positions: int
     enable_notifications: bool
     is_active: bool
+    is_paused: Optional[bool] = None
     created_by: Optional[int]
     created_at: datetime
     updated_at: Optional[datetime]

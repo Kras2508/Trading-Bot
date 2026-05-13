@@ -4,6 +4,7 @@ from typing import List
 
 from app.database import get_db
 from app.models.bot_config import BotConfig
+from app.models.bot_status import BotStatus
 from app.schemas.bot_config import BotConfigCreate, BotConfigUpdate, BotConfigResponse
 from app.core.security import verify_token, encrypt_data
 from app.services.activity_log_service import activity_log_service
@@ -102,6 +103,16 @@ async def list_configs(
     try:
         # SQL Server requires ORDER BY when using OFFSET/LIMIT
         configs = db.query(BotConfig).order_by(BotConfig.id).offset(skip).limit(limit).all()
+        config_ids = [config.id for config in configs]
+
+        if config_ids:
+            statuses = db.query(BotStatus).filter(BotStatus.bot_config_id.in_(config_ids)).all()
+            status_map = {status.bot_config_id: status for status in statuses}
+
+            for config in configs:
+                status = status_map.get(config.id)
+                config.is_paused = status.is_paused if status else False
+
         logger.info(f"Found {len(configs)} configs for user {username}")
         return configs
     except Exception as e:
@@ -122,6 +133,9 @@ async def get_config(
     config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Configuration not found")
+
+    status = db.query(BotStatus).filter(BotStatus.bot_config_id == config_id).first()
+    config.is_paused = status.is_paused if status else False
     return config
 
 
