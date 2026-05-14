@@ -1,20 +1,31 @@
-import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import BotConfigs from './pages/BotConfigs'
-import Orders from './pages/Orders'
-import Monitoring from './pages/Monitoring'
-import Trading from './pages/Trading'
-import ActivityLogs from './pages/ActivityLogs'
-import Layout from './components/Layout'
-import { AuthProvider, useAuth } from './context/AuthContext'
-import './App.css'
+import React, { useState, useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap-icons/font/bootstrap-icons.css";
+import "./styles/theme.css";
+import "./App.css";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import BotConfigs from "./pages/BotConfigs";
+import Orders from "./pages/Orders";
+import Monitoring from "./pages/Monitoring";
+import Trading from "./pages/Trading";
+import ActivityLogs from "./pages/ActivityLogs";
+import Layout from "./components/Layout";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
+import "./styles/theme.css";
+import "./App.css";
 
 function ProtectedRoute({ children }) {
-  const auth = useAuth()
-  const token = auth?.token
-  return token ? children : <Navigate to="/login" />
+  const auth = useAuth();
+  const token = auth?.token;
+  return token ? children : <Navigate to="/login" />;
 }
 
 function AppRoutes() {
@@ -37,18 +48,19 @@ function AppRoutes() {
         <Route path="activity-logs" element={<ActivityLogs />} />
       </Route>
     </Routes>
-  )
+  );
 }
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <AppRoutes />
-      </Router>
-    </AuthProvider>
-  )
+    <ThemeProvider>
+      <AuthProvider>
+        <Router>
+          <AppRoutes />
+        </Router>
+      </AuthProvider>
+    </ThemeProvider>
+  );
 }
 
-export default App
-
+export default App;

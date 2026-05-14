@@ -1,260 +1,264 @@
-import React, { useEffect, useRef, useState } from 'react'
-import axios from 'axios'
-import { useAuth } from '../context/AuthContext'
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import { useAuth } from "../context/AuthContext";
 
 export default function BotConfigs() {
-  const { token } = useAuth()
-  const [configs, setConfigs] = useState([])
-  const [showModal, setShowModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
-  const [editFormData, setEditFormData] = useState(null)
-  const [editErrors, setEditErrors] = useState({})
-  const [editSubmitting, setEditSubmitting] = useState(false)
-  const [createErrors, setCreateErrors] = useState({})
-  const [createSubmitting, setCreateSubmitting] = useState(false)
-  const [toast, setToast] = useState(null)
-  const toastTimeoutRef = useRef(null)
+  const { token } = useAuth();
+  const [configs, setConfigs] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [editFormData, setEditFormData] = useState(null);
+  const [editErrors, setEditErrors] = useState({});
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [createErrors, setCreateErrors] = useState({});
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
 
   const defaultFormData = {
-    name: '',
-    symbol: '',
-    exchange: 'binance',
-    amount: '',
+    name: "",
+    symbol: "",
+    exchange: "binance",
+    amount: "",
     leverage: 1,
-    stop_loss_percent: '',
-    take_profit_percent: '',
-    trading_mode: 'spot',
-    api_key: '',
-    api_secret: '',
-    ip_whitelist: ''
-  }
-  const [formData, setFormData] = useState(defaultFormData)
+    stop_loss_percent: "",
+    take_profit_percent: "",
+    trading_mode: "spot",
+    api_key: "",
+    api_secret: "",
+    ip_whitelist: "",
+  };
+  const [formData, setFormData] = useState(defaultFormData);
 
   useEffect(() => {
-    fetchConfigs()
-  }, [])
+    fetchConfigs();
+  }, []);
 
   useEffect(() => {
     return () => {
       if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current)
+        clearTimeout(toastTimeoutRef.current);
       }
-    }
-  }, [])
+    };
+  }, []);
 
   const fetchConfigs = async () => {
     try {
-      const response = await axios.get('/api/config/', {
+      const response = await axios.get("/api/config/", {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      setConfigs(response.data)
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setConfigs(response.data);
     } catch (error) {
-      console.error('Failed to fetch configs:', error)
+      console.error("Failed to fetch configs:", error);
       if (error.response?.status === 403 || error.response?.status === 401) {
-        alert('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
+        alert("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
       }
     }
-  }
+  };
 
   const resetCreateForm = () => {
-    setFormData(defaultFormData)
-    setCreateErrors({})
-  }
+    setFormData(defaultFormData);
+    setCreateErrors({});
+  };
 
   const showToast = (type, text) => {
-    setToast({ type, text })
+    setToast({ type, text });
     if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current)
+      clearTimeout(toastTimeoutRef.current);
     }
     toastTimeoutRef.current = setTimeout(() => {
-      setToast(null)
-    }, 3000)
-  }
+      setToast(null);
+    }, 3000);
+  };
 
   const validateConfigForm = (data) => {
-    const errors = {}
-    const symbolPattern = /^[A-Za-z0-9]+(\/[A-Za-z0-9]+)?(\.D)?$/
+    const errors = {};
+    const symbolPattern = /^[A-Za-z0-9]+(\/[A-Za-z0-9]+)?(\.D)?$/;
 
     if (!data.name?.trim()) {
-      errors.name = 'Vui lòng nhập tên bot'
+      errors.name = "Vui lòng nhập tên bot";
     }
 
     if (!data.symbol?.trim() || !symbolPattern.test(data.symbol.trim())) {
-      errors.symbol = 'Symbol không đúng định dạng'
+      errors.symbol = "Symbol không đúng định dạng";
     }
 
     if (!data.exchange?.trim()) {
-      errors.exchange = 'Vui lòng chọn sàn giao dịch'
+      errors.exchange = "Vui lòng chọn sàn giao dịch";
     }
 
-    const amount = Number(data.amount)
+    const amount = Number(data.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      errors.amount = 'Amount phải lớn hơn 0'
+      errors.amount = "Amount phải lớn hơn 0";
     }
 
-    const leverage = Number(data.leverage)
+    const leverage = Number(data.leverage);
     if (!Number.isInteger(leverage) || leverage < 1 || leverage > 125) {
-      errors.leverage = 'Leverage phải trong khoảng 1-125'
+      errors.leverage = "Leverage phải trong khoảng 1-125";
     }
-    if (data.trading_mode === 'spot' && leverage !== 1) {
-      errors.leverage = 'Spot chỉ hỗ trợ leverage = 1'
+    if (data.trading_mode === "spot" && leverage !== 1) {
+      errors.leverage = "Spot chỉ hỗ trợ leverage = 1";
     }
 
-    const stopLoss = Number(data.stop_loss_percent)
+    const stopLoss = Number(data.stop_loss_percent);
     if (!Number.isFinite(stopLoss) || stopLoss < 0) {
-      errors.stop_loss_percent = 'Stop loss phải >= 0'
+      errors.stop_loss_percent = "Stop loss phải >= 0";
     }
 
-    const takeProfit = Number(data.take_profit_percent)
+    const takeProfit = Number(data.take_profit_percent);
     if (!Number.isFinite(takeProfit) || takeProfit < 0) {
-      errors.take_profit_percent = 'Take profit phải >= 0'
+      errors.take_profit_percent = "Take profit phải >= 0";
     }
 
-    let parsedTpLevels = null
+    let parsedTpLevels = null;
     if (data.tp_levels_input && data.tp_levels_input.trim()) {
       try {
-        parsedTpLevels = JSON.parse(data.tp_levels_input)
+        parsedTpLevels = JSON.parse(data.tp_levels_input);
         if (!Array.isArray(parsedTpLevels)) {
-          errors.tp_levels_input = 'TP levels phải là mảng JSON'
+          errors.tp_levels_input = "TP levels phải là mảng JSON";
         } else {
-          let totalClose = 0
+          let totalClose = 0;
           parsedTpLevels.forEach((level) => {
-            const percent = Number(level.percent)
-            const closePercent = Number(level.close_percent)
+            const percent = Number(level.percent);
+            const closePercent = Number(level.close_percent);
             if (!Number.isFinite(percent) || percent < 0) {
-              errors.tp_levels_input = 'TP percent phải >= 0'
+              errors.tp_levels_input = "TP percent phải >= 0";
             }
             if (!Number.isFinite(closePercent) || closePercent < 0) {
-              errors.tp_levels_input = 'TP close_percent phải >= 0'
+              errors.tp_levels_input = "TP close_percent phải >= 0";
             }
-            totalClose += Number.isFinite(closePercent) ? closePercent : 0
-          })
+            totalClose += Number.isFinite(closePercent) ? closePercent : 0;
+          });
           if (totalClose > 100) {
-            errors.tp_levels_input = 'Tổng close_percent không được vượt 100%'
+            errors.tp_levels_input = "Tổng close_percent không được vượt 100%";
           }
         }
       } catch (error) {
-        errors.tp_levels_input = 'TP levels không đúng JSON'
+        errors.tp_levels_input = "TP levels không đúng JSON";
       }
     }
 
     if (data.enable_trailing) {
-      if (data.trailing_type === 'percent') {
-        const trailingPercent = Number(data.trailing_percent)
+      if (data.trailing_type === "percent") {
+        const trailingPercent = Number(data.trailing_percent);
         if (!Number.isFinite(trailingPercent) || trailingPercent <= 0) {
-          errors.trailing_percent = 'Trailing percent phải > 0'
+          errors.trailing_percent = "Trailing percent phải > 0";
         }
-      } else if (data.trailing_type === 'atr') {
-        const atrMultiplier = Number(data.trailing_atr_multiplier)
-        const atrPeriod = Number(data.trailing_atr_period)
+      } else if (data.trailing_type === "atr") {
+        const atrMultiplier = Number(data.trailing_atr_multiplier);
+        const atrPeriod = Number(data.trailing_atr_period);
         if (!Number.isFinite(atrMultiplier) || atrMultiplier <= 0) {
-          errors.trailing_atr_multiplier = 'ATR multiplier phải > 0'
+          errors.trailing_atr_multiplier = "ATR multiplier phải > 0";
         }
         if (!Number.isInteger(atrPeriod) || atrPeriod < 1) {
-          errors.trailing_atr_period = 'ATR period phải >= 1'
+          errors.trailing_atr_period = "ATR period phải >= 1";
         }
       } else {
-        errors.trailing_type = 'Trailing type không hợp lệ'
+        errors.trailing_type = "Trailing type không hợp lệ";
       }
     }
 
     return {
       errors,
       isValid: Object.keys(errors).length === 0,
-      parsedTpLevels
-    }
-  }
+      parsedTpLevels,
+    };
+  };
 
   const openCreateModal = () => {
-    setCreateErrors({})
-    setShowModal(true)
-  }
+    setCreateErrors({});
+    setShowModal(true);
+  };
 
   const openEditModal = (config) => {
-    setEditErrors({})
+    setEditErrors({});
     setEditFormData({
       id: config.id,
-      name: config.name || '',
-      symbol: config.symbol || '',
-      exchange: config.exchange || 'binance',
-      amount: config.amount ?? '',
+      name: config.name || "",
+      symbol: config.symbol || "",
+      exchange: config.exchange || "binance",
+      amount: config.amount ?? "",
       leverage: config.leverage ?? 1,
-      stop_loss_percent: config.stop_loss_percent ?? '',
-      take_profit_percent: config.take_profit_percent ?? '',
+      stop_loss_percent: config.stop_loss_percent ?? "",
+      take_profit_percent: config.take_profit_percent ?? "",
       tp_levels_input: JSON.stringify(config.tp_levels || []),
       enable_trailing: !!config.enable_trailing,
-      trailing_type: config.trailing_type || 'percent',
-      trailing_percent: config.trailing_percent ?? '',
-      trailing_atr_multiplier: config.trailing_atr_multiplier ?? '',
+      trailing_type: config.trailing_type || "percent",
+      trailing_percent: config.trailing_percent ?? "",
+      trailing_atr_multiplier: config.trailing_atr_multiplier ?? "",
       trailing_atr_period: config.trailing_atr_period ?? 14,
-      trading_mode: config.trading_mode || 'spot',
+      trading_mode: config.trading_mode || "spot",
       enable_notifications: config.enable_notifications ?? true,
       is_active: config.is_active ?? true,
-      api_key: '',
-      api_secret: ''
-    })
-    setShowEditModal(true)
-  }
+      api_key: "",
+      api_secret: "",
+    });
+    setShowEditModal(true);
+  };
 
   const openDeleteModal = (config) => {
-    setDeleteTarget(config)
-    setShowDeleteModal(true)
-  }
+    setDeleteTarget(config);
+    setShowDeleteModal(true);
+  };
 
   const closeDeleteModal = () => {
     if (deleteSubmitting) {
-      return
+      return;
     }
-    setShowDeleteModal(false)
-    setDeleteTarget(null)
-  }
+    setShowDeleteModal(false);
+    setDeleteTarget(null);
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    const { errors, isValid } = validateConfigForm(formData)
+    e.preventDefault();
+    const { errors, isValid } = validateConfigForm(formData);
     if (!isValid) {
-      setCreateErrors(errors)
-      return
+      setCreateErrors(errors);
+      return;
     }
 
-    setCreateSubmitting(true)
-    setCreateErrors({})
+    setCreateSubmitting(true);
+    setCreateErrors({});
     try {
-      await axios.post('/api/config/', formData, {
+      await axios.post("/api/config/", formData, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      setShowModal(false)
-      fetchConfigs()
-      resetCreateForm()
-      showToast('success', 'Tạo bot config thành công.')
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setShowModal(false);
+      fetchConfigs();
+      resetCreateForm();
+      showToast("success", "Tạo bot config thành công.");
     } catch (error) {
-      showToast('danger', error.response?.data?.detail || 'Tạo config thất bại')
+      showToast(
+        "danger",
+        error.response?.data?.detail || "Tạo config thất bại",
+      );
     } finally {
-      setCreateSubmitting(false)
+      setCreateSubmitting(false);
     }
-  }
+  };
 
   const handleUpdate = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!editFormData) {
-      return
+      return;
     }
 
-    const { errors, isValid, parsedTpLevels } = validateConfigForm(editFormData)
+    const { errors, isValid, parsedTpLevels } =
+      validateConfigForm(editFormData);
     if (!isValid) {
-      setEditErrors(errors)
-      return
+      setEditErrors(errors);
+      return;
     }
 
-    setEditSubmitting(true)
-    setEditErrors({})
+    setEditSubmitting(true);
+    setEditErrors({});
     try {
       const payload = {
         name: editFormData.name.trim(),
@@ -267,75 +271,90 @@ export default function BotConfigs() {
         trading_mode: editFormData.trading_mode,
         enable_trailing: !!editFormData.enable_trailing,
         enable_notifications: !!editFormData.enable_notifications,
-        is_active: !!editFormData.is_active
-      }
+        is_active: !!editFormData.is_active,
+      };
 
       if (parsedTpLevels !== null) {
-        payload.tp_levels = parsedTpLevels
+        payload.tp_levels = parsedTpLevels;
       }
 
       if (editFormData.enable_trailing) {
-        payload.trailing_type = editFormData.trailing_type
-        if (editFormData.trailing_type === 'percent') {
-          payload.trailing_percent = Number(editFormData.trailing_percent)
-        } else if (editFormData.trailing_type === 'atr') {
-          payload.trailing_atr_multiplier = Number(editFormData.trailing_atr_multiplier)
-          payload.trailing_atr_period = Number(editFormData.trailing_atr_period)
+        payload.trailing_type = editFormData.trailing_type;
+        if (editFormData.trailing_type === "percent") {
+          payload.trailing_percent = Number(editFormData.trailing_percent);
+        } else if (editFormData.trailing_type === "atr") {
+          payload.trailing_atr_multiplier = Number(
+            editFormData.trailing_atr_multiplier,
+          );
+          payload.trailing_atr_period = Number(
+            editFormData.trailing_atr_period,
+          );
         }
       }
 
       if (editFormData.api_key && editFormData.api_key.trim()) {
-        payload.api_key = editFormData.api_key.trim()
+        payload.api_key = editFormData.api_key.trim();
       }
       if (editFormData.api_secret && editFormData.api_secret.trim()) {
-        payload.api_secret = editFormData.api_secret.trim()
+        payload.api_secret = editFormData.api_secret.trim();
       }
 
       await axios.put(`/api/config/${editFormData.id}`, payload, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      setShowEditModal(false)
-      setEditFormData(null)
-      showToast('success', 'Cập nhật bot config thành công.')
-      fetchConfigs()
+      setShowEditModal(false);
+      setEditFormData(null);
+      showToast("success", "Cập nhật bot config thành công.");
+      fetchConfigs();
     } catch (error) {
-      showToast('danger', error.response?.data?.detail || 'Cập nhật config thất bại')
+      showToast(
+        "danger",
+        error.response?.data?.detail || "Cập nhật config thất bại",
+      );
     } finally {
-      setEditSubmitting(false)
+      setEditSubmitting(false);
     }
-  }
+  };
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) {
-      return
+      return;
     }
-    setDeleteSubmitting(true)
+    setDeleteSubmitting(true);
     try {
       await axios.delete(`/api/config/${deleteTarget.id}`, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      fetchConfigs()
-      showToast('success', 'Xóa bot config thành công.')
-      closeDeleteModal()
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      fetchConfigs();
+      showToast("success", "Xóa bot config thành công.");
+      closeDeleteModal();
     } catch (error) {
-      showToast('danger', error.response?.data?.detail || 'Xóa thất bại')
+      showToast("danger", error.response?.data?.detail || "Xóa thất bại");
     } finally {
-      setDeleteSubmitting(false)
+      setDeleteSubmitting(false);
     }
-  }
+  };
 
-  const editValidation = editFormData ? validateConfigForm(editFormData) : { isValid: false }
+  const editValidation = editFormData
+    ? validateConfigForm(editFormData)
+    : { isValid: false };
 
   return (
     <div>
       {toast && (
-        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1080 }}>
-          <div className={`alert alert-${toast.type} shadow-sm mb-0`} role="alert">
+        <div
+          className="position-fixed top-0 end-0 p-3"
+          style={{ zIndex: 1080 }}
+        >
+          <div
+            className={`alert alert-${toast.type} shadow-sm mb-0`}
+            role="alert"
+          >
             {toast.text}
           </div>
         </div>
@@ -372,7 +391,9 @@ export default function BotConfigs() {
                   <td>{config.name}</td>
                   <td>{config.symbol}</td>
                   <td>
-                    <span className="badge bg-primary text-uppercase">{config.exchange || 'binance'}</span>
+                    <span className="badge bg-primary text-uppercase">
+                      {config.exchange || "binance"}
+                    </span>
                   </td>
                   <td>{config.amount}</td>
                   <td>{config.stop_loss_percent}%</td>
@@ -381,13 +402,26 @@ export default function BotConfigs() {
                     <span className="badge bg-info">{config.trading_mode}</span>
                   </td>
                   <td>
-                    <span className={`badge ${config.is_active ? 'bg-success' : 'bg-secondary'}`}>
-                      {config.is_active ? 'Active' : 'Inactive'}
+                    <span
+                      className={`badge ${config.is_active ? "bg-success" : "bg-secondary"}`}
+                    >
+                      {config.is_active ? "Active" : "Inactive"}
                     </span>
                     {config.is_paused ? (
-                      <span className="badge bg-warning text-dark ms-1">Paused</span>
+                      <span
+                        className="badge ms-1"
+                        style={{
+                          backgroundColor: "var(--status-paused)",
+                          color: "#000",
+                          fontWeight: "500",
+                        }}
+                      >
+                        Paused
+                      </span>
                     ) : (
-                      config.is_active && <span className="badge bg-primary ms-1">Running</span>
+                      config.is_active && (
+                        <span className="badge bg-primary ms-1">Running</span>
+                      )
                     )}
                   </td>
                   <td>
@@ -412,12 +446,18 @@ export default function BotConfigs() {
       </div>
 
       {showModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Tạo Bot Config Mới</h5>
-                <button className="btn-close" onClick={() => setShowModal(false)}></button>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowModal(false)}
+                ></button>
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="modal-body">
@@ -425,31 +465,45 @@ export default function BotConfigs() {
                     <label className="form-label">Tên Bot</label>
                     <input
                       type="text"
-                      className={`form-control ${createErrors.name ? 'is-invalid' : ''}`}
+                      className={`form-control ${createErrors.name ? "is-invalid" : ""}`}
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
                       required
                     />
-                    {createErrors.name && <div className="invalid-feedback">{createErrors.name}</div>}
+                    {createErrors.name && (
+                      <div className="invalid-feedback">
+                        {createErrors.name}
+                      </div>
+                    )}
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Symbol</label>
                     <input
                       type="text"
-                      className={`form-control ${createErrors.symbol ? 'is-invalid' : ''}`}
+                      className={`form-control ${createErrors.symbol ? "is-invalid" : ""}`}
                       value={formData.symbol}
-                      onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, symbol: e.target.value })
+                      }
                       placeholder="BTC/USDT"
                       required
                     />
-                    {createErrors.symbol && <div className="invalid-feedback">{createErrors.symbol}</div>}
+                    {createErrors.symbol && (
+                      <div className="invalid-feedback">
+                        {createErrors.symbol}
+                      </div>
+                    )}
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Sàn Giao Dịch</label>
                     <select
-                      className={`form-select ${createErrors.exchange ? 'is-invalid' : ''}`}
+                      className={`form-select ${createErrors.exchange ? "is-invalid" : ""}`}
                       value={formData.exchange}
-                      onChange={(e) => setFormData({ ...formData, exchange: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, exchange: e.target.value })
+                      }
                       required
                     >
                       <option value="binance">Binance</option>
@@ -463,7 +517,11 @@ export default function BotConfigs() {
                       <option value="kraken">Kraken</option>
                       <option value="bitfinex">Bitfinex</option>
                     </select>
-                    {createErrors.exchange && <div className="invalid-feedback">{createErrors.exchange}</div>}
+                    {createErrors.exchange && (
+                      <div className="invalid-feedback">
+                        {createErrors.exchange}
+                      </div>
+                    )}
                     <small className="form-text text-muted">
                       Chọn sàn giao dịch bạn muốn sử dụng
                     </small>
@@ -474,13 +532,19 @@ export default function BotConfigs() {
                         <label className="form-label">Amount</label>
                         <input
                           type="number"
-                          className={`form-control ${createErrors.amount ? 'is-invalid' : ''}`}
+                          className={`form-control ${createErrors.amount ? "is-invalid" : ""}`}
                           value={formData.amount}
-                          onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, amount: e.target.value })
+                          }
                           step="0.01"
                           required
                         />
-                        {createErrors.amount && <div className="invalid-feedback">{createErrors.amount}</div>}
+                        {createErrors.amount && (
+                          <div className="invalid-feedback">
+                            {createErrors.amount}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -488,13 +552,22 @@ export default function BotConfigs() {
                         <label className="form-label">Leverage</label>
                         <input
                           type="number"
-                          className={`form-control ${createErrors.leverage ? 'is-invalid' : ''}`}
+                          className={`form-control ${createErrors.leverage ? "is-invalid" : ""}`}
                           value={formData.leverage}
-                          onChange={(e) => setFormData({ ...formData, leverage: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              leverage: e.target.value,
+                            })
+                          }
                           min="1"
                           max="125"
                         />
-                        {createErrors.leverage && <div className="invalid-feedback">{createErrors.leverage}</div>}
+                        {createErrors.leverage && (
+                          <div className="invalid-feedback">
+                            {createErrors.leverage}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -504,14 +577,21 @@ export default function BotConfigs() {
                         <label className="form-label">Stop Loss (%)</label>
                         <input
                           type="number"
-                          className={`form-control ${createErrors.stop_loss_percent ? 'is-invalid' : ''}`}
+                          className={`form-control ${createErrors.stop_loss_percent ? "is-invalid" : ""}`}
                           value={formData.stop_loss_percent}
-                          onChange={(e) => setFormData({ ...formData, stop_loss_percent: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              stop_loss_percent: e.target.value,
+                            })
+                          }
                           step="0.1"
                           required
                         />
                         {createErrors.stop_loss_percent && (
-                          <div className="invalid-feedback">{createErrors.stop_loss_percent}</div>
+                          <div className="invalid-feedback">
+                            {createErrors.stop_loss_percent}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -520,14 +600,21 @@ export default function BotConfigs() {
                         <label className="form-label">Take Profit (%)</label>
                         <input
                           type="number"
-                          className={`form-control ${createErrors.take_profit_percent ? 'is-invalid' : ''}`}
+                          className={`form-control ${createErrors.take_profit_percent ? "is-invalid" : ""}`}
                           value={formData.take_profit_percent}
-                          onChange={(e) => setFormData({ ...formData, take_profit_percent: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              take_profit_percent: e.target.value,
+                            })
+                          }
                           step="0.1"
                           required
                         />
                         {createErrors.take_profit_percent && (
-                          <div className="invalid-feedback">{createErrors.take_profit_percent}</div>
+                          <div className="invalid-feedback">
+                            {createErrors.take_profit_percent}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -537,64 +624,93 @@ export default function BotConfigs() {
                     <select
                       className="form-select"
                       value={formData.trading_mode}
-                      onChange={(e) => setFormData({ ...formData, trading_mode: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          trading_mode: e.target.value,
+                        })
+                      }
                     >
                       <option value="spot">Spot</option>
                       <option value="futures">Futures</option>
                     </select>
                   </div>
-                  
+
                   <hr className="my-4" />
                   <h6 className="mb-3">API Credentials (Tùy chọn)</h6>
-                  
+
                   <div className="mb-3">
                     <label className="form-label">API Key</label>
                     <input
                       type="text"
                       className="form-control"
                       value={formData.api_key}
-                      onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, api_key: e.target.value })
+                      }
                       placeholder="Nhập API Key từ sàn giao dịch"
                     />
                     <small className="form-text text-muted">
-                      API Key từ {formData.exchange.charAt(0).toUpperCase() + formData.exchange.slice(1)} (sẽ được mã hóa)
+                      API Key từ{" "}
+                      {formData.exchange.charAt(0).toUpperCase() +
+                        formData.exchange.slice(1)}{" "}
+                      (sẽ được mã hóa)
                     </small>
                   </div>
-                  
+
                   <div className="mb-3">
                     <label className="form-label">Secret Key</label>
                     <input
                       type="password"
                       className="form-control"
                       value={formData.api_secret}
-                      onChange={(e) => setFormData({ ...formData, api_secret: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({ ...formData, api_secret: e.target.value })
+                      }
                       placeholder="Nhập Secret Key từ sàn giao dịch"
                     />
                     <small className="form-text text-muted">
-                      Secret Key từ {formData.exchange.charAt(0).toUpperCase() + formData.exchange.slice(1)} (sẽ được mã hóa)
+                      Secret Key từ{" "}
+                      {formData.exchange.charAt(0).toUpperCase() +
+                        formData.exchange.slice(1)}{" "}
+                      (sẽ được mã hóa)
                     </small>
                   </div>
-                  
+
                   <div className="mb-3">
                     <label className="form-label">IP Whitelist</label>
                     <input
                       type="text"
                       className="form-control"
                       value={formData.ip_whitelist}
-                      onChange={(e) => setFormData({ ...formData, ip_whitelist: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          ip_whitelist: e.target.value,
+                        })
+                      }
                       placeholder="1.2.3.4, 5.6.7.8"
                     />
                     <small className="form-text text-muted">
-                      Danh sách IP được phép (phân cách bằng dấu phẩy). Ví dụ: 1.2.3.4, 5.6.7.8
+                      Danh sách IP được phép (phân cách bằng dấu phẩy). Ví dụ:
+                      1.2.3.4, 5.6.7.8
                     </small>
                   </div>
                 </div>
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowModal(false)}
+                  >
                     Hủy
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={createSubmitting}>
-                    {createSubmitting ? 'Đang tạo...' : 'Tạo'}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={createSubmitting}
+                  >
+                    {createSubmitting ? "Đang tạo..." : "Tạo"}
                   </button>
                 </div>
               </form>
@@ -604,12 +720,18 @@ export default function BotConfigs() {
       )}
 
       {showEditModal && editFormData && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Chỉnh Sửa Bot Config</h5>
-                <button className="btn-close" onClick={() => setShowEditModal(false)}></button>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowEditModal(false)}
+                ></button>
               </div>
               <form onSubmit={handleUpdate}>
                 <div className="modal-body">
@@ -617,31 +739,52 @@ export default function BotConfigs() {
                     <label className="form-label">Tên Bot</label>
                     <input
                       type="text"
-                      className={`form-control ${editErrors.name ? 'is-invalid' : ''}`}
+                      className={`form-control ${editErrors.name ? "is-invalid" : ""}`}
                       value={editFormData.name}
-                      onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          name: e.target.value,
+                        })
+                      }
                       required
                     />
-                    {editErrors.name && <div className="invalid-feedback">{editErrors.name}</div>}
+                    {editErrors.name && (
+                      <div className="invalid-feedback">{editErrors.name}</div>
+                    )}
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Symbol</label>
                     <input
                       type="text"
-                      className={`form-control ${editErrors.symbol ? 'is-invalid' : ''}`}
+                      className={`form-control ${editErrors.symbol ? "is-invalid" : ""}`}
                       value={editFormData.symbol}
-                      onChange={(e) => setEditFormData({ ...editFormData, symbol: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          symbol: e.target.value,
+                        })
+                      }
                       placeholder="BTC/USDT hoặc BTCUSDT"
                       required
                     />
-                    {editErrors.symbol && <div className="invalid-feedback">{editErrors.symbol}</div>}
+                    {editErrors.symbol && (
+                      <div className="invalid-feedback">
+                        {editErrors.symbol}
+                      </div>
+                    )}
                   </div>
                   <div className="mb-3">
                     <label className="form-label">Sàn Giao Dịch</label>
                     <select
-                      className={`form-select ${editErrors.exchange ? 'is-invalid' : ''}`}
+                      className={`form-select ${editErrors.exchange ? "is-invalid" : ""}`}
                       value={editFormData.exchange}
-                      onChange={(e) => setEditFormData({ ...editFormData, exchange: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          exchange: e.target.value,
+                        })
+                      }
                       required
                     >
                       <option value="binance">Binance</option>
@@ -655,7 +798,11 @@ export default function BotConfigs() {
                       <option value="kraken">Kraken</option>
                       <option value="bitfinex">Bitfinex</option>
                     </select>
-                    {editErrors.exchange && <div className="invalid-feedback">{editErrors.exchange}</div>}
+                    {editErrors.exchange && (
+                      <div className="invalid-feedback">
+                        {editErrors.exchange}
+                      </div>
+                    )}
                   </div>
                   <div className="row">
                     <div className="col-md-6">
@@ -663,13 +810,22 @@ export default function BotConfigs() {
                         <label className="form-label">Amount</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.amount ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.amount ? "is-invalid" : ""}`}
                           value={editFormData.amount}
-                          onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              amount: e.target.value,
+                            })
+                          }
                           step="0.01"
                           required
                         />
-                        {editErrors.amount && <div className="invalid-feedback">{editErrors.amount}</div>}
+                        {editErrors.amount && (
+                          <div className="invalid-feedback">
+                            {editErrors.amount}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -677,13 +833,22 @@ export default function BotConfigs() {
                         <label className="form-label">Leverage</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.leverage ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.leverage ? "is-invalid" : ""}`}
                           value={editFormData.leverage}
-                          onChange={(e) => setEditFormData({ ...editFormData, leverage: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              leverage: e.target.value,
+                            })
+                          }
                           min="1"
                           max="125"
                         />
-                        {editErrors.leverage && <div className="invalid-feedback">{editErrors.leverage}</div>}
+                        {editErrors.leverage && (
+                          <div className="invalid-feedback">
+                            {editErrors.leverage}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -693,13 +858,22 @@ export default function BotConfigs() {
                         <label className="form-label">Stop Loss (%)</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.stop_loss_percent ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.stop_loss_percent ? "is-invalid" : ""}`}
                           value={editFormData.stop_loss_percent}
-                          onChange={(e) => setEditFormData({ ...editFormData, stop_loss_percent: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              stop_loss_percent: e.target.value,
+                            })
+                          }
                           step="0.1"
                           required
                         />
-                        {editErrors.stop_loss_percent && <div className="invalid-feedback">{editErrors.stop_loss_percent}</div>}
+                        {editErrors.stop_loss_percent && (
+                          <div className="invalid-feedback">
+                            {editErrors.stop_loss_percent}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -707,13 +881,22 @@ export default function BotConfigs() {
                         <label className="form-label">Take Profit (%)</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.take_profit_percent ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.take_profit_percent ? "is-invalid" : ""}`}
                           value={editFormData.take_profit_percent}
-                          onChange={(e) => setEditFormData({ ...editFormData, take_profit_percent: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              take_profit_percent: e.target.value,
+                            })
+                          }
                           step="0.1"
                           required
                         />
-                        {editErrors.take_profit_percent && <div className="invalid-feedback">{editErrors.take_profit_percent}</div>}
+                        {editErrors.take_profit_percent && (
+                          <div className="invalid-feedback">
+                            {editErrors.take_profit_percent}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -721,14 +904,21 @@ export default function BotConfigs() {
                   <div className="mb-3">
                     <label className="form-label">TP Levels (JSON)</label>
                     <textarea
-                      className={`form-control ${editErrors.tp_levels_input ? 'is-invalid' : ''}`}
+                      className={`form-control ${editErrors.tp_levels_input ? "is-invalid" : ""}`}
                       value={editFormData.tp_levels_input}
-                      onChange={(e) => setEditFormData({ ...editFormData, tp_levels_input: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          tp_levels_input: e.target.value,
+                        })
+                      }
                       rows="3"
                       placeholder='[{"percent":1,"close_percent":50}]'
                     />
                     {editErrors.tp_levels_input && (
-                      <div className="invalid-feedback">{editErrors.tp_levels_input}</div>
+                      <div className="invalid-feedback">
+                        {editErrors.tp_levels_input}
+                      </div>
                     )}
                     <small className="form-text text-muted">
                       Ví dụ: [{'{"percent":1,"close_percent":50}'}]
@@ -740,7 +930,12 @@ export default function BotConfigs() {
                     <select
                       className="form-select"
                       value={editFormData.trading_mode}
-                      onChange={(e) => setEditFormData({ ...editFormData, trading_mode: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          trading_mode: e.target.value,
+                        })
+                      }
                     >
                       <option value="spot">Spot</option>
                       <option value="futures">Futures</option>
@@ -752,7 +947,12 @@ export default function BotConfigs() {
                       className="form-check-input"
                       type="checkbox"
                       checked={editFormData.enable_trailing}
-                      onChange={(e) => setEditFormData({ ...editFormData, enable_trailing: e.target.checked })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          enable_trailing: e.target.checked,
+                        })
+                      }
                     />
                     <label className="form-check-label">Bật Trailing</label>
                   </div>
@@ -762,42 +962,69 @@ export default function BotConfigs() {
                       <div className="mb-3">
                         <label className="form-label">Trailing Type</label>
                         <select
-                          className={`form-select ${editErrors.trailing_type ? 'is-invalid' : ''}`}
+                          className={`form-select ${editErrors.trailing_type ? "is-invalid" : ""}`}
                           value={editFormData.trailing_type}
-                          onChange={(e) => setEditFormData({ ...editFormData, trailing_type: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              trailing_type: e.target.value,
+                            })
+                          }
                         >
                           <option value="percent">Percent</option>
                           <option value="atr">ATR</option>
                         </select>
-                        {editErrors.trailing_type && <div className="invalid-feedback">{editErrors.trailing_type}</div>}
+                        {editErrors.trailing_type && (
+                          <div className="invalid-feedback">
+                            {editErrors.trailing_type}
+                          </div>
+                        )}
                       </div>
-                      {editFormData.trailing_type === 'percent' && (
+                      {editFormData.trailing_type === "percent" && (
                         <div className="mb-3">
                           <label className="form-label">Trailing Percent</label>
                           <input
                             type="number"
-                            className={`form-control ${editErrors.trailing_percent ? 'is-invalid' : ''}`}
+                            className={`form-control ${editErrors.trailing_percent ? "is-invalid" : ""}`}
                             value={editFormData.trailing_percent}
-                            onChange={(e) => setEditFormData({ ...editFormData, trailing_percent: e.target.value })}
+                            onChange={(e) =>
+                              setEditFormData({
+                                ...editFormData,
+                                trailing_percent: e.target.value,
+                              })
+                            }
                             step="0.1"
                           />
-                          {editErrors.trailing_percent && <div className="invalid-feedback">{editErrors.trailing_percent}</div>}
+                          {editErrors.trailing_percent && (
+                            <div className="invalid-feedback">
+                              {editErrors.trailing_percent}
+                            </div>
+                          )}
                         </div>
                       )}
-                      {editFormData.trailing_type === 'atr' && (
+                      {editFormData.trailing_type === "atr" && (
                         <div className="row">
                           <div className="col-md-6">
                             <div className="mb-3">
-                              <label className="form-label">ATR Multiplier</label>
+                              <label className="form-label">
+                                ATR Multiplier
+                              </label>
                               <input
                                 type="number"
-                                className={`form-control ${editErrors.trailing_atr_multiplier ? 'is-invalid' : ''}`}
+                                className={`form-control ${editErrors.trailing_atr_multiplier ? "is-invalid" : ""}`}
                                 value={editFormData.trailing_atr_multiplier}
-                                onChange={(e) => setEditFormData({ ...editFormData, trailing_atr_multiplier: e.target.value })}
+                                onChange={(e) =>
+                                  setEditFormData({
+                                    ...editFormData,
+                                    trailing_atr_multiplier: e.target.value,
+                                  })
+                                }
                                 step="0.1"
                               />
                               {editErrors.trailing_atr_multiplier && (
-                                <div className="invalid-feedback">{editErrors.trailing_atr_multiplier}</div>
+                                <div className="invalid-feedback">
+                                  {editErrors.trailing_atr_multiplier}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -806,13 +1033,20 @@ export default function BotConfigs() {
                               <label className="form-label">ATR Period</label>
                               <input
                                 type="number"
-                                className={`form-control ${editErrors.trailing_atr_period ? 'is-invalid' : ''}`}
+                                className={`form-control ${editErrors.trailing_atr_period ? "is-invalid" : ""}`}
                                 value={editFormData.trailing_atr_period}
-                                onChange={(e) => setEditFormData({ ...editFormData, trailing_atr_period: e.target.value })}
+                                onChange={(e) =>
+                                  setEditFormData({
+                                    ...editFormData,
+                                    trailing_atr_period: e.target.value,
+                                  })
+                                }
                                 min="1"
                               />
                               {editErrors.trailing_atr_period && (
-                                <div className="invalid-feedback">{editErrors.trailing_atr_period}</div>
+                                <div className="invalid-feedback">
+                                  {editErrors.trailing_atr_period}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -826,7 +1060,12 @@ export default function BotConfigs() {
                       className="form-check-input"
                       type="checkbox"
                       checked={editFormData.enable_notifications}
-                      onChange={(e) => setEditFormData({ ...editFormData, enable_notifications: e.target.checked })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          enable_notifications: e.target.checked,
+                        })
+                      }
                     />
                     <label className="form-check-label">Bật thông báo</label>
                   </div>
@@ -836,7 +1075,12 @@ export default function BotConfigs() {
                       className="form-check-input"
                       type="checkbox"
                       checked={editFormData.is_active}
-                      onChange={(e) => setEditFormData({ ...editFormData, is_active: e.target.checked })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          is_active: e.target.checked,
+                        })
+                      }
                     />
                     <label className="form-check-label">Kích hoạt bot</label>
                   </div>
@@ -850,7 +1094,12 @@ export default function BotConfigs() {
                       type="text"
                       className="form-control"
                       value={editFormData.api_key}
-                      onChange={(e) => setEditFormData({ ...editFormData, api_key: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          api_key: e.target.value,
+                        })
+                      }
                       placeholder="Để trống nếu không thay đổi"
                     />
                   </div>
@@ -861,17 +1110,30 @@ export default function BotConfigs() {
                       type="password"
                       className="form-control"
                       value={editFormData.api_secret}
-                      onChange={(e) => setEditFormData({ ...editFormData, api_secret: e.target.value })}
+                      onChange={(e) =>
+                        setEditFormData({
+                          ...editFormData,
+                          api_secret: e.target.value,
+                        })
+                      }
                       placeholder="Để trống nếu không thay đổi"
                     />
                   </div>
                 </div>
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setShowEditModal(false)}
+                  >
                     Hủy
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={!editValidation.isValid || editSubmitting}>
-                    {editSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={!editValidation.isValid || editSubmitting}
+                  >
+                    {editSubmitting ? "Đang lưu..." : "Lưu thay đổi"}
                   </button>
                 </div>
               </form>
@@ -881,22 +1143,38 @@ export default function BotConfigs() {
       )}
 
       {showDeleteModal && deleteTarget && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Xác nhận xóa</h5>
-                <button className="btn-close" onClick={closeDeleteModal}></button>
+                <button
+                  className="btn-close"
+                  onClick={closeDeleteModal}
+                ></button>
               </div>
               <div className="modal-body">
                 Bạn có chắc muốn xóa bot <strong>{deleteTarget.name}</strong>?
               </div>
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={closeDeleteModal} disabled={deleteSubmitting}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeDeleteModal}
+                  disabled={deleteSubmitting}
+                >
                   Hủy
                 </button>
-                <button type="button" className="btn btn-danger" onClick={handleDeleteConfirm} disabled={deleteSubmitting}>
-                  {deleteSubmitting ? 'Đang xóa...' : 'Xóa'}
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleDeleteConfirm}
+                  disabled={deleteSubmitting}
+                >
+                  {deleteSubmitting ? "Đang xóa..." : "Xóa"}
                 </button>
               </div>
             </div>
@@ -904,6 +1182,5 @@ export default function BotConfigs() {
         </div>
       )}
     </div>
-  )
+  );
 }
-

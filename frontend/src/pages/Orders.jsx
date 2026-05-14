@@ -1,514 +1,578 @@
-import React, { useEffect, useRef, useState } from 'react'
-import axios from 'axios'
-import { useAuth } from '../context/AuthContext'
+import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import { useAuth } from "../context/AuthContext";
 
 export default function Orders() {
-  const { token } = useAuth()
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [toast, setToast] = useState(null)
-  const toastTimeoutRef = useRef(null)
-  const [refreshingPnL, setRefreshingPnL] = useState({}) // Track which order is refreshing
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [editFormData, setEditFormData] = useState(null)
-  const [editErrors, setEditErrors] = useState({})
-  const [editSubmitting, setEditSubmitting] = useState(false)
-  const [bulkSubmitting, setBulkSubmitting] = useState(false)
-  const [view, setView] = useState('all')
+  const { token } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [toast, setToast] = useState(null);
+  const toastTimeoutRef = useRef(null);
+  const [refreshingPnL, setRefreshingPnL] = useState({}); // Track which order is refreshing
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState(null);
+  const [editErrors, setEditErrors] = useState({});
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [view, setView] = useState("all");
   const [filter, setFilter] = useState({
-    side: '',
-    symbol: '',
-    botConfigId: '',
-    startDate: '',
-    endDate: ''
-  })
-  const [selectedOrders, setSelectedOrders] = useState({})
-  const [refreshingStatus, setRefreshingStatus] = useState({})
-  const [cancellingOrders, setCancellingOrders] = useState({})
+    side: "",
+    symbol: "",
+    botConfigId: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [selectedOrders, setSelectedOrders] = useState({});
+  const [refreshingStatus, setRefreshingStatus] = useState({});
+  const [cancellingOrders, setCancellingOrders] = useState({});
 
   useEffect(() => {
     if (token) {
-      fetchOrders()
+      fetchOrders();
     }
-  }, [token, view, filter.side, filter.symbol, filter.botConfigId, filter.startDate, filter.endDate])
+  }, [
+    token,
+    view,
+    filter.side,
+    filter.symbol,
+    filter.botConfigId,
+    filter.startDate,
+    filter.endDate,
+  ]);
 
   useEffect(() => {
     return () => {
       if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current)
+        clearTimeout(toastTimeoutRef.current);
       }
-    }
-  }, [])
+    };
+  }, []);
 
   const fetchOrders = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const isCompletedView = view === 'completed'
+      const isCompletedView = view === "completed";
       const endpoint = isCompletedView
-        ? '/api/orders/completed'
-        : '/api/orders/history'
-      
-      const params = {}
-      if (!isCompletedView && view !== 'all') params.status = view
-      if (filter.side) params.side = filter.side
-      if (filter.symbol.trim()) params.symbol = filter.symbol.trim()
-      if (filter.botConfigId) params.bot_config_id = Number(filter.botConfigId)
-      if (filter.startDate) params.start_date = `${filter.startDate}T00:00:00Z`
-      if (filter.endDate) params.end_date = `${filter.endDate}T23:59:59Z`
-      
+        ? "/api/orders/completed"
+        : "/api/orders/history";
+
+      const params = {};
+      if (!isCompletedView && view !== "all") params.status = view;
+      if (filter.side) params.side = filter.side;
+      if (filter.symbol.trim()) params.symbol = filter.symbol.trim();
+      if (filter.botConfigId) params.bot_config_id = Number(filter.botConfigId);
+      if (filter.startDate) params.start_date = `${filter.startDate}T00:00:00Z`;
+      if (filter.endDate) params.end_date = `${filter.endDate}T23:59:59Z`;
+
       const response = await axios.get(endpoint, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        params: params
-      })
-      setOrders(response.data || [])
-      setSelectedOrders({})
+        params: params,
+      });
+      setOrders(response.data || []);
+      setSelectedOrders({});
     } catch (error) {
-      console.error('Failed to fetch orders:', error)
-      
+      console.error("Failed to fetch orders:", error);
+
       // Ensure error message is always a string
-      let errorMessage = 'Không thể tải danh sách lệnh'
-      
+      let errorMessage = "Không thể tải danh sách lệnh";
+
       if (error.response?.status === 403 || error.response?.status === 401) {
-        errorMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+        errorMessage = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
       } else if (error.response?.data) {
-        const detail = error.response.data.detail
-        if (typeof detail === 'string') {
-          errorMessage = detail
+        const detail = error.response.data.detail;
+        if (typeof detail === "string") {
+          errorMessage = detail;
         } else if (Array.isArray(detail)) {
           // FastAPI validation errors
-          errorMessage = detail.map(err => {
-            if (typeof err === 'string') return err
-            if (err.msg) return err.msg
-            return JSON.stringify(err)
-          }).join(', ')
-        } else if (typeof detail === 'object') {
-          errorMessage = JSON.stringify(detail)
+          errorMessage = detail
+            .map((err) => {
+              if (typeof err === "string") return err;
+              if (err.msg) return err.msg;
+              return JSON.stringify(err);
+            })
+            .join(", ");
+        } else if (typeof detail === "object") {
+          errorMessage = JSON.stringify(detail);
         } else {
-          errorMessage = String(detail)
+          errorMessage = String(detail);
         }
       } else if (error.message) {
-        errorMessage = error.message
+        errorMessage = error.message;
       }
-      
-      setError(errorMessage)
+
+      setError(errorMessage);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const showToast = (type, text) => {
-    setToast({ type, text })
+    setToast({ type, text });
     if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current)
+      clearTimeout(toastTimeoutRef.current);
     }
     toastTimeoutRef.current = setTimeout(() => {
-      setToast(null)
-    }, 3000)
-  }
+      setToast(null);
+    }, 3000);
+  };
 
   const getEditEligibility = (order) => {
-    const orderType = (order.order_type || 'market').toLowerCase()
-    if (order.status === 'pending' && orderType === 'limit') {
-      return { allowed: true, reason: '' }
+    const orderType = (order.order_type || "market").toLowerCase();
+    if (order.status === "pending" && orderType === "limit") {
+      return { allowed: true, reason: "" };
     }
 
-    if (order.status === 'pending') {
-      return { allowed: false, reason: 'Chỉ lệnh pending limit mới được chỉnh sửa' }
+    if (order.status === "pending") {
+      return {
+        allowed: false,
+        reason: "Chỉ lệnh pending limit mới được chỉnh sửa",
+      };
     }
 
-    if (order.status === 'filled' || order.status === 'closed') {
-      return { allowed: false, reason: 'Lệnh đã khớp/đóng, không thể sửa dữ liệu khớp' }
+    if (order.status === "filled" || order.status === "closed") {
+      return {
+        allowed: false,
+        reason: "Lệnh đã khớp/đóng, không thể sửa dữ liệu khớp",
+      };
     }
 
-    if (order.status === 'cancelled') {
-      return { allowed: false, reason: 'Lệnh đã hủy, không thể sửa' }
+    if (order.status === "cancelled") {
+      return { allowed: false, reason: "Lệnh đã hủy, không thể sửa" };
     }
 
-    if (order.status === 'error') {
-      return { allowed: false, reason: 'Lệnh lỗi, không thể sửa' }
+    if (order.status === "error") {
+      return { allowed: false, reason: "Lệnh lỗi, không thể sửa" };
     }
 
-    return { allowed: false, reason: 'Lệnh không thể sửa trong trạng thái hiện tại' }
-  }
+    return {
+      allowed: false,
+      reason: "Lệnh không thể sửa trong trạng thái hiện tại",
+    };
+  };
 
   const validateEditForm = (data) => {
-    const errors = {}
+    const errors = {};
 
-    const amount = Number(data.amount)
+    const amount = Number(data.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      errors.amount = 'Amount phải lớn hơn 0'
+      errors.amount = "Amount phải lớn hơn 0";
     }
 
-    const price = Number(data.price)
+    const price = Number(data.price);
     if (!Number.isFinite(price) || price <= 0) {
-      errors.price = 'Price phải lớn hơn 0'
+      errors.price = "Price phải lớn hơn 0";
     }
 
-    if (data.stop_loss_price !== '' && data.stop_loss_price !== null) {
-      const stopLoss = Number(data.stop_loss_price)
+    if (data.stop_loss_price !== "" && data.stop_loss_price !== null) {
+      const stopLoss = Number(data.stop_loss_price);
       if (!Number.isFinite(stopLoss) || stopLoss < 0) {
-        errors.stop_loss_price = 'Stop loss phải >= 0'
+        errors.stop_loss_price = "Stop loss phải >= 0";
       }
     }
 
-    if (data.take_profit_price !== '' && data.take_profit_price !== null) {
-      const takeProfit = Number(data.take_profit_price)
+    if (data.take_profit_price !== "" && data.take_profit_price !== null) {
+      const takeProfit = Number(data.take_profit_price);
       if (!Number.isFinite(takeProfit) || takeProfit < 0) {
-        errors.take_profit_price = 'Take profit phải >= 0'
+        errors.take_profit_price = "Take profit phải >= 0";
       }
     }
 
     return {
       errors,
-      isValid: Object.keys(errors).length === 0
-    }
-  }
+      isValid: Object.keys(errors).length === 0,
+    };
+  };
 
   const openEditModal = (order) => {
-    const eligibility = getEditEligibility(order)
+    const eligibility = getEditEligibility(order);
     if (!eligibility.allowed) {
-      showToast('warning', eligibility.reason)
-      return
+      showToast("warning", eligibility.reason);
+      return;
     }
 
-    setEditErrors({})
+    setEditErrors({});
     setEditFormData({
       id: order.id,
       symbol: order.symbol,
-      order_type: order.order_type || 'market',
+      order_type: order.order_type || "market",
       status: order.status,
-      amount: order.amount ?? '',
-      price: order.price ?? '',
-      stop_loss_price: order.stop_loss_price ?? '',
-      take_profit_price: order.take_profit_price ?? ''
-    })
-    setShowEditModal(true)
-  }
+      amount: order.amount ?? "",
+      price: order.price ?? "",
+      stop_loss_price: order.stop_loss_price ?? "",
+      take_profit_price: order.take_profit_price ?? "",
+    });
+    setShowEditModal(true);
+  };
 
   const closeEditModal = () => {
     if (editSubmitting) {
-      return
+      return;
     }
-    setShowEditModal(false)
-    setEditFormData(null)
-    setEditErrors({})
-  }
+    setShowEditModal(false);
+    setEditFormData(null);
+    setEditErrors({});
+  };
 
   const handleUpdate = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!editFormData) {
-      return
+      return;
     }
 
-    const { errors, isValid } = validateEditForm(editFormData)
+    const { errors, isValid } = validateEditForm(editFormData);
     if (!isValid) {
-      setEditErrors(errors)
-      return
+      setEditErrors(errors);
+      return;
     }
 
-    setEditSubmitting(true)
-    setEditErrors({})
+    setEditSubmitting(true);
+    setEditErrors({});
     try {
       const payload = {
         amount: Number(editFormData.amount),
         price: Number(editFormData.price),
-        stop_loss_price: editFormData.stop_loss_price === '' ? null : Number(editFormData.stop_loss_price),
-        take_profit_price: editFormData.take_profit_price === '' ? null : Number(editFormData.take_profit_price)
-      }
+        stop_loss_price:
+          editFormData.stop_loss_price === ""
+            ? null
+            : Number(editFormData.stop_loss_price),
+        take_profit_price:
+          editFormData.take_profit_price === ""
+            ? null
+            : Number(editFormData.take_profit_price),
+      };
 
       await axios.patch(`/api/orders/${editFormData.id}`, payload, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      showToast('success', 'Cập nhật lệnh thành công.')
-      closeEditModal()
-      fetchOrders()
+      showToast("success", "Cập nhật lệnh thành công.");
+      closeEditModal();
+      fetchOrders();
     } catch (error) {
-      const message = error.response?.data?.detail || 'Cập nhật lệnh thất bại'
-      showToast('danger', message)
+      const message = error.response?.data?.detail || "Cập nhật lệnh thất bại";
+      showToast("danger", message);
     } finally {
-      setEditSubmitting(false)
+      setEditSubmitting(false);
     }
-  }
+  };
 
   const getStatusBadge = (status) => {
     const badges = {
-      filled: 'bg-success',
-      pending: 'bg-warning',
-      cancelled: 'bg-secondary',
-      closed: 'bg-info',
-      error: 'bg-danger'
-    }
-    return badges[status] || 'bg-secondary'
-  }
+      filled: "bg-success",
+      pending: "bg-warning",
+      cancelled: "bg-secondary",
+      closed: "bg-info",
+      error: "bg-danger",
+    };
+    return badges[status] || "bg-secondary";
+  };
 
   const getStatusText = (status) => {
     const texts = {
-      filled: 'Đã khớp',
-      pending: 'Đang chờ',
-      cancelled: 'Đã hủy',
-      closed: 'Đã đóng',
-      error: 'Lỗi'
-    }
-    return texts[status] || status
-  }
+      filled: "Đã khớp",
+      pending: "Đang chờ",
+      cancelled: "Đã hủy",
+      closed: "Đã đóng",
+      error: "Lỗi",
+    };
+    return texts[status] || status;
+  };
 
   const viewLabels = {
-    all: 'Tất cả',
-    pending: 'Đang chờ',
-    filled: 'Đã khớp',
-    closed: 'Đã đóng',
-    cancelled: 'Đã hủy',
-    error: 'Lỗi',
-    completed: 'Hoàn thành'
-  }
+    all: "Tất cả",
+    pending: "Đang chờ",
+    filled: "Đã khớp",
+    closed: "Đã đóng",
+    cancelled: "Đã hủy",
+    error: "Lỗi",
+    completed: "Hoàn thành",
+  };
 
   const getStatusTooltip = (status) => {
     const tooltips = {
-      filled: 'Lệnh đã khớp trên sàn, position đang mở',
-      pending: 'Lệnh đang chờ khớp',
-      cancelled: 'Lệnh đã bị hủy',
-      closed: 'Position đã được đóng hoàn toàn',
-      error: 'Lệnh bị lỗi'
-    }
-    return tooltips[status] || ''
-  }
+      filled: "Lệnh đã khớp trên sàn, position đang mở",
+      pending: "Lệnh đang chờ khớp",
+      cancelled: "Lệnh đã bị hủy",
+      closed: "Position đã được đóng hoàn toàn",
+      error: "Lệnh bị lỗi",
+    };
+    return tooltips[status] || "";
+  };
 
   const formatDateTime = (dateString) => {
-    if (!dateString) return '-'
+    if (!dateString) return "-";
 
     try {
       // Parse ISO string từ backend (UTC)
-      const date = new Date(dateString)
+      const date = new Date(dateString);
 
       // Nếu invalid thì trả thẳng về chuỗi gốc
       if (isNaN(date.getTime())) {
-        return dateString
+        return dateString;
       }
 
       // Hiển thị THEO UTC (không auto +7 theo giờ máy)
-      const day = String(date.getUTCDate()).padStart(2, '0')
-      const month = String(date.getUTCMonth() + 1).padStart(2, '0')
-      const year = date.getUTCFullYear()
-      const hours = String(date.getUTCHours()).padStart(2, '0')
-      const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-      const seconds = String(date.getUTCSeconds()).padStart(2, '0')
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const year = date.getUTCFullYear();
+      const hours = String(date.getUTCHours()).padStart(2, "0");
+      const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+      const seconds = String(date.getUTCSeconds()).padStart(2, "0");
 
-      return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`
+      return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
     } catch (e) {
-      console.error('Error formatting date:', e, dateString)
-      return dateString
+      console.error("Error formatting date:", e, dateString);
+      return dateString;
     }
-  }
+  };
 
   const refreshPnL = async (orderId) => {
-    setRefreshingPnL({ ...refreshingPnL, [orderId]: true })
+    setRefreshingPnL({ ...refreshingPnL, [orderId]: true });
     try {
-      const response = await axios.post(`/api/trading/refresh-pnl/${orderId}`, {}, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
+      const response = await axios.post(
+        `/api/trading/refresh-pnl/${orderId}`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
       // Update order in list
-      setOrders(orders.map(order => 
-        order.id === orderId 
-          ? { ...order, pnl: response.data.pnl, pnl_percent: response.data.pnl_percent }
-          : order
-      ))
-      
+      setOrders(
+        orders.map((order) =>
+          order.id === orderId
+            ? {
+                ...order,
+                pnl: response.data.pnl,
+                pnl_percent: response.data.pnl_percent,
+              }
+            : order,
+        ),
+      );
+
       // Show success message
-      setError(null)
-      alert(`Đã cập nhật PnL: ${response.data.pnl > 0 ? '+' : ''}${parseFloat(response.data.pnl).toFixed(2)} (${response.data.pnl_percent > 0 ? '+' : ''}${parseFloat(response.data.pnl_percent).toFixed(2)}%)`)
+      setError(null);
+      alert(
+        `Đã cập nhật PnL: ${response.data.pnl > 0 ? "+" : ""}${parseFloat(response.data.pnl).toFixed(2)} (${response.data.pnl_percent > 0 ? "+" : ""}${parseFloat(response.data.pnl_percent).toFixed(2)}%)`,
+      );
     } catch (error) {
-      console.error('Failed to refresh PnL:', error)
-      const errorMessage = error.response?.data?.detail || 'Không thể lấy PnL từ sàn'
-      setError(errorMessage)
+      console.error("Failed to refresh PnL:", error);
+      const errorMessage =
+        error.response?.data?.detail || "Không thể lấy PnL từ sàn";
+      setError(errorMessage);
     } finally {
-      setRefreshingPnL({ ...refreshingPnL, [orderId]: false })
+      setRefreshingPnL({ ...refreshingPnL, [orderId]: false });
     }
-  }
+  };
 
   const refreshOrderStatus = async (orderId) => {
-    setRefreshingStatus({ ...refreshingStatus, [orderId]: true })
+    setRefreshingStatus({ ...refreshingStatus, [orderId]: true });
     try {
       await axios.get(`/api/trading/check-order/${orderId}`, {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      showToast('success', `Đã refresh trạng thái lệnh #${orderId}`)
-      fetchOrders()
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      showToast("success", `Đã refresh trạng thái lệnh #${orderId}`);
+      fetchOrders();
     } catch (error) {
-      const message = error.response?.data?.detail || 'Không thể refresh trạng thái lệnh'
-      showToast('danger', message)
+      const message =
+        error.response?.data?.detail || "Không thể refresh trạng thái lệnh";
+      showToast("danger", message);
     } finally {
-      setRefreshingStatus({ ...refreshingStatus, [orderId]: false })
+      setRefreshingStatus({ ...refreshingStatus, [orderId]: false });
     }
-  }
+  };
 
   const cancelOrder = async (orderId) => {
-    setCancellingOrders({ ...cancellingOrders, [orderId]: true })
+    setCancellingOrders({ ...cancellingOrders, [orderId]: true });
     try {
-      await axios.post(`/api/trading/cancel-order/${orderId}`, {}, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      showToast('success', `Đã hủy lệnh #${orderId}`)
-      fetchOrders()
+      await axios.post(
+        `/api/trading/cancel-order/${orderId}`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      showToast("success", `Đã hủy lệnh #${orderId}`);
+      fetchOrders();
     } catch (error) {
-      const message = error.response?.data?.detail || 'Không thể hủy lệnh'
-      showToast('danger', message)
+      const message = error.response?.data?.detail || "Không thể hủy lệnh";
+      showToast("danger", message);
     } finally {
-      setCancellingOrders({ ...cancellingOrders, [orderId]: false })
+      setCancellingOrders({ ...cancellingOrders, [orderId]: false });
     }
-  }
+  };
 
-  const getSelectedOrders = () => orders.filter((order) => selectedOrders[order.id])
+  const getSelectedOrders = () =>
+    orders.filter((order) => selectedOrders[order.id]);
 
   const handleSelectAll = (checked) => {
     if (!checked) {
-      setSelectedOrders({})
-      return
+      setSelectedOrders({});
+      return;
     }
-    const next = {}
+    const next = {};
     orders.forEach((order) => {
-      next[order.id] = true
-    })
-    setSelectedOrders(next)
-  }
+      next[order.id] = true;
+    });
+    setSelectedOrders(next);
+  };
 
   const handleSelectOne = (orderId, checked) => {
     setSelectedOrders((prev) => ({
       ...prev,
-      [orderId]: checked
-    }))
-  }
+      [orderId]: checked,
+    }));
+  };
 
   const handleBulkCancel = async () => {
-    const selected = getSelectedOrders()
-    const pendingOrders = selected.filter((order) => order.status === 'pending')
+    const selected = getSelectedOrders();
+    const pendingOrders = selected.filter(
+      (order) => order.status === "pending",
+    );
 
     if (pendingOrders.length === 0) {
-      showToast('warning', 'Chỉ có thể hủy lệnh pending')
-      return
+      showToast("warning", "Chỉ có thể hủy lệnh pending");
+      return;
     }
 
-    setBulkSubmitting(true)
+    setBulkSubmitting(true);
     const results = await Promise.allSettled(
       pendingOrders.map((order) =>
-        axios.post(`/api/trading/cancel-order/${order.id}`, {}, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-      )
-    )
+        axios.post(
+          `/api/trading/cancel-order/${order.id}`,
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        ),
+      ),
+    );
 
-    const successCount = results.filter((result) => result.status === 'fulfilled').length
-    const errorCount = results.length - successCount
+    const successCount = results.filter(
+      (result) => result.status === "fulfilled",
+    ).length;
+    const errorCount = results.length - successCount;
     if (successCount > 0) {
-      showToast('success', `Đã hủy ${successCount} lệnh pending`)
+      showToast("success", `Đã hủy ${successCount} lệnh pending`);
     }
     if (errorCount > 0) {
-      showToast('danger', `Có ${errorCount} lệnh không hủy được`)
+      showToast("danger", `Có ${errorCount} lệnh không hủy được`);
     }
-    setBulkSubmitting(false)
-    fetchOrders()
-  }
+    setBulkSubmitting(false);
+    fetchOrders();
+  };
 
   const handleBulkRefreshStatus = async () => {
-    const selected = getSelectedOrders()
+    const selected = getSelectedOrders();
     if (selected.length === 0) {
-      showToast('warning', 'Chọn lệnh để refresh trạng thái')
-      return
+      showToast("warning", "Chọn lệnh để refresh trạng thái");
+      return;
     }
 
-    setBulkSubmitting(true)
+    setBulkSubmitting(true);
     const results = await Promise.allSettled(
       selected.map((order) =>
         axios.get(`/api/trading/check-order/${order.id}`, {
           headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-      )
-    )
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+      ),
+    );
 
-    const successCount = results.filter((result) => result.status === 'fulfilled').length
-    const errorCount = results.length - successCount
+    const successCount = results.filter(
+      (result) => result.status === "fulfilled",
+    ).length;
+    const errorCount = results.length - successCount;
     if (successCount > 0) {
-      showToast('success', `Đã refresh ${successCount} lệnh`)
+      showToast("success", `Đã refresh ${successCount} lệnh`);
     }
     if (errorCount > 0) {
-      showToast('danger', `Có ${errorCount} lệnh không refresh được`)
+      showToast("danger", `Có ${errorCount} lệnh không refresh được`);
     }
-    setBulkSubmitting(false)
-    fetchOrders()
-  }
+    setBulkSubmitting(false);
+    fetchOrders();
+  };
 
   const exportCsv = () => {
     if (orders.length === 0) {
-      showToast('warning', 'Không có dữ liệu để export')
-      return
+      showToast("warning", "Không có dữ liệu để export");
+      return;
     }
 
     const headers = [
-      'id',
-      'status',
-      'bot_config_name',
-      'symbol',
-      'side',
-      'amount',
-      'order_type',
-      'filled_price',
-      'price',
-      'stop_loss_price',
-      'take_profit_price',
-      'pnl',
-      'created_at',
-      'closed_at'
-    ]
+      "id",
+      "status",
+      "bot_config_name",
+      "symbol",
+      "side",
+      "amount",
+      "order_type",
+      "filled_price",
+      "price",
+      "stop_loss_price",
+      "take_profit_price",
+      "pnl",
+      "created_at",
+      "closed_at",
+    ];
 
-    const rows = orders.map((order) => ([
-      order.id,
-      order.status,
-      order.bot_config_name || '',
-      order.symbol,
-      order.side,
-      order.amount ?? '',
-      order.order_type || '',
-      order.filled_price ?? '',
-      order.price ?? '',
-      order.stop_loss_price ?? '',
-      order.take_profit_price ?? '',
-      order.pnl ?? '',
-      order.created_at ?? '',
-      order.closed_at ?? ''
-    ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')))
+    const rows = orders.map((order) =>
+      [
+        order.id,
+        order.status,
+        order.bot_config_name || "",
+        order.symbol,
+        order.side,
+        order.amount ?? "",
+        order.order_type || "",
+        order.filled_price ?? "",
+        order.price ?? "",
+        order.stop_loss_price ?? "",
+        order.take_profit_price ?? "",
+        order.pnl ?? "",
+        order.created_at ?? "",
+        order.closed_at ?? "",
+      ]
+        .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+        .join(","),
+    );
 
-    const csvContent = [headers.join(','), ...rows].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `orders_${view}_${new Date().toISOString().slice(0, 10)}.csv`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `orders_${view}_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div>
       {toast && (
-        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1080 }}>
-          <div className={`alert alert-${toast.type} shadow-sm mb-0`} role="alert">
+        <div
+          className="position-fixed top-0 end-0 p-3"
+          style={{ zIndex: 1080 }}
+        >
+          <div
+            className={`alert alert-${toast.type} shadow-sm mb-0`}
+            role="alert"
+          >
             {toast.text}
           </div>
         </div>
@@ -517,10 +581,18 @@ export default function Orders() {
 
       <div className="mb-3">
         <ul className="nav nav-pills flex-wrap gap-2">
-          {['all', 'pending', 'filled', 'closed', 'cancelled', 'error', 'completed'].map((tab) => (
+          {[
+            "all",
+            "pending",
+            "filled",
+            "closed",
+            "cancelled",
+            "error",
+            "completed",
+          ].map((tab) => (
             <li className="nav-item" key={tab}>
               <button
-                className={`nav-link ${view === tab ? 'active' : ''}`}
+                className={`nav-link ${view === tab ? "active" : ""}`}
                 type="button"
                 onClick={() => setView(tab)}
               >
@@ -532,7 +604,8 @@ export default function Orders() {
       </div>
 
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <div className="text-muted">
+        <div className="text-secondary fw-500">
+          <i className="bi bi-check-circle me-1"></i>
           Đã chọn {Object.keys(selectedOrders).length} lệnh
         </div>
         <button
@@ -540,7 +613,7 @@ export default function Orders() {
           onClick={handleBulkCancel}
           disabled={bulkSubmitting}
         >
-          {bulkSubmitting ? 'Đang xử lý...' : 'Hủy lệnh pending'}
+          {bulkSubmitting ? "Đang xử lý..." : "Hủy lệnh pending"}
         </button>
         <button
           className="btn btn-outline-primary btn-sm"
@@ -573,7 +646,7 @@ export default function Orders() {
                 className="form-select"
                 value={filter.side}
                 onChange={(e) => {
-                  setFilter({ ...filter, side: e.target.value })
+                  setFilter({ ...filter, side: e.target.value });
                 }}
               >
                 <option value="">Tất cả</option>
@@ -587,7 +660,9 @@ export default function Orders() {
                 type="number"
                 className="form-control"
                 value={filter.botConfigId}
-                onChange={(e) => setFilter({ ...filter, botConfigId: e.target.value })}
+                onChange={(e) =>
+                  setFilter({ ...filter, botConfigId: e.target.value })
+                }
                 placeholder="VD: 12"
               />
             </div>
@@ -597,7 +672,9 @@ export default function Orders() {
                 type="text"
                 className="form-control"
                 value={filter.symbol}
-                onChange={(e) => setFilter({ ...filter, symbol: e.target.value })}
+                onChange={(e) =>
+                  setFilter({ ...filter, symbol: e.target.value })
+                }
                 placeholder="BTC/USDT"
               />
             </div>
@@ -610,7 +687,10 @@ export default function Orders() {
               >
                 {loading ? (
                   <>
-                    <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                    <span
+                      className="spinner-border spinner-border-sm me-1"
+                      role="status"
+                    ></span>
                     Đang tải...
                   </>
                 ) : (
@@ -624,7 +704,9 @@ export default function Orders() {
                 type="date"
                 className="form-control"
                 value={filter.startDate}
-                onChange={(e) => setFilter({ ...filter, startDate: e.target.value })}
+                onChange={(e) =>
+                  setFilter({ ...filter, startDate: e.target.value })
+                }
               />
             </div>
             <div className="col-md-3">
@@ -633,7 +715,9 @@ export default function Orders() {
                 type="date"
                 className="form-control"
                 value={filter.endDate}
-                onChange={(e) => setFilter({ ...filter, endDate: e.target.value })}
+                onChange={(e) =>
+                  setFilter({ ...filter, endDate: e.target.value })
+                }
               />
             </div>
           </div>
@@ -642,7 +726,10 @@ export default function Orders() {
 
       {/* Error Message */}
       {error && (
-        <div className="alert alert-danger alert-dismissible fade show" role="alert">
+        <div
+          className="alert alert-danger alert-dismissible fade show"
+          role="alert"
+        >
           {error}
           <button
             type="button"
@@ -667,9 +754,10 @@ export default function Orders() {
         <div className="card">
           {orders.length === 0 ? (
             <div className="card-body text-center py-5">
-              <p className="text-muted mb-0">
-                {view === 'completed'
-                  ? 'Chưa có lệnh nào đã hoàn thành'
+              <p className="text-secondary mb-0">
+                <i className="bi bi-inbox me-2"></i>
+                {view === "completed"
+                  ? "Chưa có lệnh nào đã hoàn thành"
                   : `Chưa có lệnh nào (${viewLabels[view]})`}
               </p>
             </div>
@@ -682,7 +770,10 @@ export default function Orders() {
                       <input
                         type="checkbox"
                         className="form-check-input"
-                        checked={orders.length > 0 && Object.keys(selectedOrders).length === orders.length}
+                        checked={
+                          orders.length > 0 &&
+                          Object.keys(selectedOrders).length === orders.length
+                        }
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </th>
@@ -710,61 +801,98 @@ export default function Orders() {
                           type="checkbox"
                           className="form-check-input"
                           checked={!!selectedOrders[order.id]}
-                          onChange={(e) => handleSelectOne(order.id, e.target.checked)}
+                          onChange={(e) =>
+                            handleSelectOne(order.id, e.target.checked)
+                          }
                         />
                       </td>
                       <td>{order.id}</td>
                       <td>
-                        <span 
+                        <span
                           className={`badge ${getStatusBadge(order.status)}`}
                           title={getStatusTooltip(order.status)}
-                          style={{ cursor: 'help' }}
+                          style={{ cursor: "help" }}
                         >
                           {getStatusText(order.status)}
                         </span>
                       </td>
                       <td>
-                        <div className="fw-semibold" title={`Bot Config ID: ${order.bot_config_id}`}>
-                          {order.bot_config_name || `Bot #${order.bot_config_id}`}
+                        <div
+                          className="fw-semibold"
+                          title={`Bot Config ID: ${order.bot_config_id}`}
+                        >
+                          {order.bot_config_name ||
+                            `Bot #${order.bot_config_id}`}
                         </div>
                       </td>
-                      <td><strong>{order.symbol}</strong></td>
                       <td>
-                        <span className={`badge ${order.side === 'buy' ? 'bg-success' : 'bg-danger'}`}>
+                        <strong>{order.symbol}</strong>
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${order.side === "buy" ? "bg-success" : "bg-danger"}`}
+                        >
                           {order.side.toUpperCase()}
                         </span>
                       </td>
-                      <td>{order.amount ? parseFloat(order.amount).toFixed(4) : '-'}</td>
                       <td>
-                        <small className="text-muted">{order.order_type || 'market'}</small>
+                        {order.amount
+                          ? parseFloat(order.amount).toFixed(4)
+                          : "-"}
                       </td>
                       <td>
-                        {order.filled_price 
-                          ? <strong>{parseFloat(order.filled_price || 0).toFixed(2)}</strong>
-                          : order.price 
-                            ? <span className="text-muted">Limit: {parseFloat(order.price || 0).toFixed(2)}</span>
-                            : '-'
-                        }
+                        <small className="text-muted">
+                          {order.order_type || "market"}
+                        </small>
                       </td>
                       <td>
-                        {order.stop_loss_price && !isNaN(parseFloat(order.stop_loss_price)) ? (
-                          <span className="text-danger">🛑 {parseFloat(order.stop_loss_price).toFixed(2)}</span>
+                        {order.filled_price ? (
+                          <strong>
+                            {parseFloat(order.filled_price || 0).toFixed(2)}
+                          </strong>
+                        ) : order.price ? (
+                          <span className="text-muted">
+                            Limit: {parseFloat(order.price || 0).toFixed(2)}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td>
+                        {order.stop_loss_price &&
+                        !isNaN(parseFloat(order.stop_loss_price)) ? (
+                          <span className="text-danger">
+                            🛑 {parseFloat(order.stop_loss_price).toFixed(2)}
+                          </span>
                         ) : (
                           <span className="text-muted">-</span>
                         )}
                       </td>
                       <td>
-                        {order.take_profit_price && !isNaN(parseFloat(order.take_profit_price)) ? (
-                          <span className="text-success">🎯 {parseFloat(order.take_profit_price).toFixed(2)}</span>
+                        {order.take_profit_price &&
+                        !isNaN(parseFloat(order.take_profit_price)) ? (
+                          <span className="text-success">
+                            🎯 {parseFloat(order.take_profit_price).toFixed(2)}
+                          </span>
                         ) : (
                           <span className="text-muted">-</span>
                         )}
                       </td>
                       <td>
                         {/* PnL: Số tiền (USDT) */}
-                        {order.pnl !== undefined && order.pnl !== null && !isNaN(parseFloat(order.pnl)) && order.pnl !== 0 ? (
-                          <span className={order.pnl > 0 ? 'text-success fw-bold' : 'text-danger fw-bold'}>
-                            {order.pnl > 0 ? '+' : ''}{parseFloat(order.pnl).toFixed(2)}
+                        {order.pnl !== undefined &&
+                        order.pnl !== null &&
+                        !isNaN(parseFloat(order.pnl)) &&
+                        order.pnl !== 0 ? (
+                          <span
+                            className={
+                              order.pnl > 0
+                                ? "text-success fw-bold"
+                                : "text-danger fw-bold"
+                            }
+                          >
+                            {order.pnl > 0 ? "+" : ""}
+                            {parseFloat(order.pnl).toFixed(2)}
                           </span>
                         ) : (
                           <span className="text-muted">-</span>
@@ -773,7 +901,7 @@ export default function Orders() {
                       <td>
                         <div className="d-flex flex-column gap-1">
                           {(() => {
-                            const eligibility = getEditEligibility(order)
+                            const eligibility = getEditEligibility(order);
                             if (eligibility.allowed) {
                               return (
                                 <button
@@ -782,26 +910,30 @@ export default function Orders() {
                                 >
                                   Sửa
                                 </button>
-                              )
+                              );
                             }
 
                             return (
                               <button
                                 className="btn btn-sm btn-outline-secondary"
-                                onClick={() => showToast('warning', eligibility.reason)}
+                                onClick={() =>
+                                  showToast("warning", eligibility.reason)
+                                }
                               >
                                 Không thể sửa
                               </button>
-                            )
+                            );
                           })()}
 
-                          {order.status === 'pending' ? (
+                          {order.status === "pending" ? (
                             <button
                               className="btn btn-sm btn-outline-danger"
                               onClick={() => cancelOrder(order.id)}
                               disabled={cancellingOrders[order.id]}
                             >
-                              {cancellingOrders[order.id] ? 'Đang hủy...' : 'Hủy lệnh'}
+                              {cancellingOrders[order.id]
+                                ? "Đang hủy..."
+                                : "Hủy lệnh"}
                             </button>
                           ) : (
                             <span className="text-muted">-</span>
@@ -812,22 +944,33 @@ export default function Orders() {
                             onClick={() => refreshOrderStatus(order.id)}
                             disabled={refreshingStatus[order.id]}
                           >
-                            {refreshingStatus[order.id] ? 'Đang refresh...' : 'Refresh trạng thái'}
+                            {refreshingStatus[order.id]
+                              ? "Đang refresh..."
+                              : "Refresh trạng thái"}
                           </button>
 
                           {/* Chỉ hiển thị nút Refresh PnL cho:
                               - Lệnh đang mở (filled) - để xem unrealized PnL
                               - Lệnh đã đóng nhưng chưa có PnL */}
-                          {(order.status === 'filled' || (order.status === 'closed' && (!order.pnl || order.pnl === 0))) ? (
+                          {order.status === "filled" ||
+                          (order.status === "closed" &&
+                            (!order.pnl || order.pnl === 0)) ? (
                             <button
                               className="btn btn-sm btn-outline-primary"
                               onClick={() => refreshPnL(order.id)}
                               disabled={refreshingPnL[order.id]}
-                              title={order.status === 'filled' ? 'Lấy unrealized PnL từ sàn' : 'Lấy lại PnL từ sàn'}
+                              title={
+                                order.status === "filled"
+                                  ? "Lấy unrealized PnL từ sàn"
+                                  : "Lấy lại PnL từ sàn"
+                              }
                             >
                               {refreshingPnL[order.id] ? (
                                 <>
-                                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                                  <span
+                                    className="spinner-border spinner-border-sm me-1"
+                                    role="status"
+                                  ></span>
                                   Đang lấy...
                                 </>
                               ) : (
@@ -864,11 +1007,16 @@ export default function Orders() {
       )}
 
       {showEditModal && editFormData && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Chỉnh sửa lệnh #{editFormData.id}</h5>
+                <h5 className="modal-title">
+                  Chỉnh sửa lệnh #{editFormData.id}
+                </h5>
                 <button className="btn-close" onClick={closeEditModal}></button>
               </div>
               <form onSubmit={handleUpdate}>
@@ -912,12 +1060,21 @@ export default function Orders() {
                         <label className="form-label">Amount</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.amount ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.amount ? "is-invalid" : ""}`}
                           value={editFormData.amount}
-                          onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              amount: e.target.value,
+                            })
+                          }
                           step="0.0001"
                         />
-                        {editErrors.amount && <div className="invalid-feedback">{editErrors.amount}</div>}
+                        {editErrors.amount && (
+                          <div className="invalid-feedback">
+                            {editErrors.amount}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -925,12 +1082,21 @@ export default function Orders() {
                         <label className="form-label">Price</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.price ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.price ? "is-invalid" : ""}`}
                           value={editFormData.price}
-                          onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              price: e.target.value,
+                            })
+                          }
                           step="0.01"
                         />
-                        {editErrors.price && <div className="invalid-feedback">{editErrors.price}</div>}
+                        {editErrors.price && (
+                          <div className="invalid-feedback">
+                            {editErrors.price}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -940,14 +1106,21 @@ export default function Orders() {
                         <label className="form-label">Stop Loss</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.stop_loss_price ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.stop_loss_price ? "is-invalid" : ""}`}
                           value={editFormData.stop_loss_price}
-                          onChange={(e) => setEditFormData({ ...editFormData, stop_loss_price: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              stop_loss_price: e.target.value,
+                            })
+                          }
                           step="0.01"
                           placeholder="Để trống nếu không dùng"
                         />
                         {editErrors.stop_loss_price && (
-                          <div className="invalid-feedback">{editErrors.stop_loss_price}</div>
+                          <div className="invalid-feedback">
+                            {editErrors.stop_loss_price}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -956,25 +1129,41 @@ export default function Orders() {
                         <label className="form-label">Take Profit</label>
                         <input
                           type="number"
-                          className={`form-control ${editErrors.take_profit_price ? 'is-invalid' : ''}`}
+                          className={`form-control ${editErrors.take_profit_price ? "is-invalid" : ""}`}
                           value={editFormData.take_profit_price}
-                          onChange={(e) => setEditFormData({ ...editFormData, take_profit_price: e.target.value })}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              take_profit_price: e.target.value,
+                            })
+                          }
                           step="0.01"
                           placeholder="Để trống nếu không dùng"
                         />
                         {editErrors.take_profit_price && (
-                          <div className="invalid-feedback">{editErrors.take_profit_price}</div>
+                          <div className="invalid-feedback">
+                            {editErrors.take_profit_price}
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={closeEditModal} disabled={editSubmitting}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={closeEditModal}
+                    disabled={editSubmitting}
+                  >
                     Hủy
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={editSubmitting}>
-                    {editSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={editSubmitting}
+                  >
+                    {editSubmitting ? "Đang lưu..." : "Lưu thay đổi"}
                   </button>
                 </div>
               </form>
@@ -983,6 +1172,5 @@ export default function Orders() {
         </div>
       )}
     </div>
-  )
+  );
 }
-
