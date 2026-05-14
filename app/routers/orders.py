@@ -90,6 +90,83 @@ async def get_order_history(
         )
 
 
+@router.get("/completed", response_model=List[OrderResponse])
+async def get_completed_orders(
+    bot_config_id: Optional[int] = Query(None),
+    symbol: Optional[str] = Query(None),
+    side: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    username: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """
+    Lấy danh sách lệnh đã hoàn thành (filled hoặc closed)
+    
+    Lệnh đã hoàn thành bao gồm:
+    - status = "filled" (đã khớp)
+    - status = "closed" (đã đóng)
+    """
+    try:
+        query = db.query(Order).filter(
+            Order.status.in_(["filled", "closed"])
+        )
+        
+        # Apply filters
+        if bot_config_id:
+            query = query.filter(Order.bot_config_id == bot_config_id)
+        
+        if symbol:
+            query = query.filter(Order.symbol == symbol)
+        
+        if side:
+            query = query.filter(Order.side == side.lower())
+        
+        if start_date:
+            query = query.filter(Order.created_at >= start_date)
+        
+        if end_date:
+            query = query.filter(Order.created_at <= end_date)
+        
+        # Order by created_at descending (newest first)
+        query = query.order_by(Order.created_at.desc())
+        
+        # Apply pagination
+        orders = query.offset(offset).limit(limit).all()
+        
+        # Ensure tp_levels is always a list and add bot_config_name
+        from app.models.bot_config import BotConfig
+        for order in orders:
+            if order.tp_levels is None:
+                order.tp_levels = []
+            elif not isinstance(order.tp_levels, list):
+                order.tp_levels = []
+            
+            # Load bot_config relationship and get name with exchange
+            if order.bot_config:
+                exchange = order.bot_config.exchange or order.exchange or "binance"
+                order.bot_config_name = f"{exchange.capitalize()} - {order.bot_config.name}"
+            else:
+                # Fallback: query directly if relationship not loaded
+                bot_config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
+                if bot_config:
+                    exchange = bot_config.exchange or order.exchange or "binance"
+                    order.bot_config_name = f"{exchange.capitalize()} - {bot_config.name}"
+                else:
+                    exchange = order.exchange or "binance"
+                    order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
+        
+        return orders
+    except Exception as e:
+        logger.error(f"Error fetching completed orders: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
     order_id: int,
@@ -170,83 +247,6 @@ async def list_orders(
         return orders
     except Exception as e:
         logger.error(f"Error listing orders: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        )
-
-
-@router.get("/completed", response_model=List[OrderResponse])
-async def get_completed_orders(
-    bot_config_id: Optional[int] = Query(None),
-    symbol: Optional[str] = Query(None),
-    side: Optional[str] = Query(None),
-    start_date: Optional[datetime] = Query(None),
-    end_date: Optional[datetime] = Query(None),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    username: str = Depends(verify_token),
-    db: Session = Depends(get_db)
-):
-    """
-    Lấy danh sách lệnh đã hoàn thành (filled hoặc closed)
-    
-    Lệnh đã hoàn thành bao gồm:
-    - status = "filled" (đã khớp)
-    - status = "closed" (đã đóng)
-    """
-    try:
-        query = db.query(Order).filter(
-            Order.status.in_(["filled", "closed"])
-        )
-        
-        # Apply filters
-        if bot_config_id:
-            query = query.filter(Order.bot_config_id == bot_config_id)
-        
-        if symbol:
-            query = query.filter(Order.symbol == symbol)
-        
-        if side:
-            query = query.filter(Order.side == side.lower())
-        
-        if start_date:
-            query = query.filter(Order.created_at >= start_date)
-        
-        if end_date:
-            query = query.filter(Order.created_at <= end_date)
-        
-        # Order by created_at descending (newest first)
-        query = query.order_by(Order.created_at.desc())
-        
-        # Apply pagination
-        orders = query.offset(offset).limit(limit).all()
-        
-        # Ensure tp_levels is always a list and add bot_config_name
-        from app.models.bot_config import BotConfig
-        for order in orders:
-            if order.tp_levels is None:
-                order.tp_levels = []
-            elif not isinstance(order.tp_levels, list):
-                order.tp_levels = []
-            
-            # Load bot_config relationship and get name with exchange
-            if order.bot_config:
-                exchange = order.bot_config.exchange or order.exchange or "binance"
-                order.bot_config_name = f"{exchange.capitalize()} - {order.bot_config.name}"
-            else:
-                # Fallback: query directly if relationship not loaded
-                bot_config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
-                if bot_config:
-                    exchange = bot_config.exchange or order.exchange or "binance"
-                    order.bot_config_name = f"{exchange.capitalize()} - {bot_config.name}"
-                else:
-                    exchange = order.exchange or "binance"
-                    order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
-        
-        return orders
-    except Exception as e:
-        logger.error(f"Error fetching completed orders: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Internal server error: {str(e)}"

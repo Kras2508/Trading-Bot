@@ -8,28 +8,28 @@ export default function Orders() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [refreshingPnL, setRefreshingPnL] = useState({}) // Track which order is refreshing
+  const [view, setView] = useState('all')
   const [filter, setFilter] = useState({
-    status: '',
-    side: '',
-    showCompletedOnly: false
+    side: ''
   })
 
   useEffect(() => {
     if (token) {
       fetchOrders()
     }
-  }, [token, filter.showCompletedOnly])
+  }, [token, view, filter.side])
 
   const fetchOrders = async () => {
     setLoading(true)
     setError(null)
     try {
-      const endpoint = filter.showCompletedOnly 
-        ? '/api/orders/completed' 
+      const isCompletedView = view === 'completed'
+      const endpoint = isCompletedView
+        ? '/api/orders/completed'
         : '/api/orders/history'
       
       const params = {}
-      if (filter.status) params.status = filter.status
+      if (!isCompletedView && view !== 'all') params.status = view
       if (filter.side) params.side = filter.side
       
       const response = await axios.get(endpoint, {
@@ -93,6 +93,16 @@ export default function Orders() {
       error: 'Lỗi'
     }
     return texts[status] || status
+  }
+
+  const viewLabels = {
+    all: 'Tất cả',
+    pending: 'Đang chờ',
+    filled: 'Đã khớp',
+    closed: 'Đã đóng',
+    cancelled: 'Đã hủy',
+    error: 'Lỗi',
+    completed: 'Hoàn thành'
   }
 
   const getStatusTooltip = (status) => {
@@ -165,27 +175,27 @@ export default function Orders() {
     <div>
       <h2 className="mb-4">Lịch Sử Lệnh</h2>
 
+      <div className="mb-3">
+        <ul className="nav nav-pills flex-wrap gap-2">
+          {['all', 'pending', 'filled', 'closed', 'cancelled', 'error', 'completed'].map((tab) => (
+            <li className="nav-item" key={tab}>
+              <button
+                className={`nav-link ${view === tab ? 'active' : ''}`}
+                type="button"
+                onClick={() => setView(tab)}
+              >
+                {viewLabels[tab]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       {/* Filters */}
       <div className="card mb-3">
         <div className="card-body">
           <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">Lọc theo trạng thái</label>
-              <select
-                className="form-select"
-                value={filter.status}
-                onChange={(e) => {
-                  setFilter({ ...filter, status: e.target.value })
-                }}
-              >
-                <option value="">Tất cả</option>
-                <option value="filled">Đã khớp</option>
-                <option value="closed">Đã đóng</option>
-                <option value="pending">Đang chờ</option>
-                <option value="cancelled">Đã hủy</option>
-              </select>
-            </div>
-            <div className="col-md-3">
+            <div className="col-md-4">
               <label className="form-label">Lọc theo hướng</label>
               <select
                 className="form-select"
@@ -199,23 +209,7 @@ export default function Orders() {
                 <option value="sell">Bán (Sell)</option>
               </select>
             </div>
-            <div className="col-md-3 d-flex align-items-end">
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="showCompletedOnly"
-                  checked={filter.showCompletedOnly}
-                  onChange={(e) => {
-                    setFilter({ ...filter, showCompletedOnly: e.target.checked })
-                  }}
-                />
-                <label className="form-check-label" htmlFor="showCompletedOnly">
-                  Chỉ hiển thị lệnh đã hoàn thành
-                </label>
-              </div>
-            </div>
-            <div className="col-md-3 d-flex align-items-end">
+            <div className="col-md-4 d-flex align-items-end">
               <button
                 className="btn btn-primary w-100"
                 onClick={fetchOrders}
@@ -264,9 +258,9 @@ export default function Orders() {
           {orders.length === 0 ? (
             <div className="card-body text-center py-5">
               <p className="text-muted mb-0">
-                {filter.showCompletedOnly 
-                  ? 'Chưa có lệnh nào đã hoàn thành' 
-                  : 'Chưa có lệnh nào'}
+                {view === 'completed'
+                  ? 'Chưa có lệnh nào đã hoàn thành'
+                  : `Chưa có lệnh nào (${viewLabels[view]})`}
               </p>
             </div>
           ) : (
@@ -275,20 +269,19 @@ export default function Orders() {
                 <thead>
                   <tr>
                     <th>ID</th>
-                    <th>Bot Config</th>
+                    <th>Status</th>
+                    <th>Bot</th>
                     <th>Symbol</th>
-                    <th>Mode</th>
                     <th>Side</th>
-                    <th>Type</th>
                     <th>Amount</th>
-                    <th>Entry Price</th>
+                    <th>Type</th>
+                    <th>Filled Price</th>
                     <th>Stop Loss</th>
                     <th>Take Profit</th>
-                    <th>Status</th>
                     <th>PnL</th>
-                    <th>ROI</th>
                     <th>Actions</th>
                     <th>Created</th>
+                    <th>Closed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -296,30 +289,34 @@ export default function Orders() {
                     <tr key={order.id}>
                       <td>{order.id}</td>
                       <td>
-                        <small className="text-muted" title={`Bot Config ID: ${order.bot_config_id}`}>
-                          {order.bot_config_name || `Bot #${order.bot_config_id}`}
-                        </small>
-                      </td>
-                      <td><strong>{order.symbol}</strong></td>
-                      <td>
-                        <span className={`badge ${order.trading_mode === 'futures' ? 'bg-warning text-dark' : 'bg-info'}`}>
-                          {order.trading_mode === 'futures' ? 'Futures' : 'Spot'}
+                        <span 
+                          className={`badge ${getStatusBadge(order.status)}`}
+                          title={getStatusTooltip(order.status)}
+                          style={{ cursor: 'help' }}
+                        >
+                          {getStatusText(order.status)}
                         </span>
                       </td>
+                      <td>
+                        <div className="fw-semibold" title={`Bot Config ID: ${order.bot_config_id}`}>
+                          {order.bot_config_name || `Bot #${order.bot_config_id}`}
+                        </div>
+                      </td>
+                      <td><strong>{order.symbol}</strong></td>
                       <td>
                         <span className={`badge ${order.side === 'buy' ? 'bg-success' : 'bg-danger'}`}>
                           {order.side.toUpperCase()}
                         </span>
                       </td>
+                      <td>{order.amount ? parseFloat(order.amount).toFixed(4) : '-'}</td>
                       <td>
                         <small className="text-muted">{order.order_type || 'market'}</small>
                       </td>
-                      <td>{order.amount ? parseFloat(order.amount).toFixed(4) : '-'}</td>
                       <td>
                         {order.filled_price 
                           ? <strong>{parseFloat(order.filled_price || 0).toFixed(2)}</strong>
                           : order.price 
-                            ? <span className="text-muted">{parseFloat(order.price || 0).toFixed(2)}</span>
+                            ? <span className="text-muted">Limit: {parseFloat(order.price || 0).toFixed(2)}</span>
                             : '-'
                         }
                       </td>
@@ -338,29 +335,10 @@ export default function Orders() {
                         )}
                       </td>
                       <td>
-                        <span 
-                          className={`badge ${getStatusBadge(order.status)}`}
-                          title={getStatusTooltip(order.status)}
-                          style={{ cursor: 'help' }}
-                        >
-                          {getStatusText(order.status)}
-                        </span>
-                      </td>
-                      <td>
                         {/* PnL: Số tiền (USDT) */}
                         {order.pnl !== undefined && order.pnl !== null && !isNaN(parseFloat(order.pnl)) && order.pnl !== 0 ? (
                           <span className={order.pnl > 0 ? 'text-success fw-bold' : 'text-danger fw-bold'}>
                             {order.pnl > 0 ? '+' : ''}{parseFloat(order.pnl).toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        {/* ROI: Phần trăm (%) */}
-                        {order.pnl_percent !== undefined && order.pnl_percent !== null && !isNaN(parseFloat(order.pnl_percent)) && order.pnl_percent !== 0 ? (
-                          <span className={order.pnl_percent > 0 ? 'text-success fw-bold' : 'text-danger fw-bold'}>
-                            {order.pnl_percent > 0 ? '+' : ''}{parseFloat(order.pnl_percent).toFixed(2)}%
                           </span>
                         ) : (
                           <span className="text-muted">-</span>
@@ -393,6 +371,9 @@ export default function Orders() {
                       <td>
                         <small>{formatDateTime(order.created_at)}</small>
                       </td>
+                      <td>
+                        <small>{formatDateTime(order.closed_at)}</small>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -406,8 +387,7 @@ export default function Orders() {
       {!loading && orders.length > 0 && (
         <div className="mt-3">
           <small className="text-muted">
-            Hiển thị {orders.length} lệnh
-            {filter.showCompletedOnly && ' (chỉ lệnh đã hoàn thành)'}
+            Hiển thị {orders.length} lệnh ({viewLabels[view]})
           </small>
         </div>
       )}
