@@ -14,16 +14,24 @@ export default function Orders() {
   const [editFormData, setEditFormData] = useState(null)
   const [editErrors, setEditErrors] = useState({})
   const [editSubmitting, setEditSubmitting] = useState(false)
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [view, setView] = useState('all')
   const [filter, setFilter] = useState({
-    side: ''
+    side: '',
+    symbol: '',
+    botConfigId: '',
+    startDate: '',
+    endDate: ''
   })
+  const [selectedOrders, setSelectedOrders] = useState({})
+  const [refreshingStatus, setRefreshingStatus] = useState({})
+  const [cancellingOrders, setCancellingOrders] = useState({})
 
   useEffect(() => {
     if (token) {
       fetchOrders()
     }
-  }, [token, view, filter.side])
+  }, [token, view, filter.side, filter.symbol, filter.botConfigId, filter.startDate, filter.endDate])
 
   useEffect(() => {
     return () => {
@@ -45,6 +53,10 @@ export default function Orders() {
       const params = {}
       if (!isCompletedView && view !== 'all') params.status = view
       if (filter.side) params.side = filter.side
+      if (filter.symbol.trim()) params.symbol = filter.symbol.trim()
+      if (filter.botConfigId) params.bot_config_id = Number(filter.botConfigId)
+      if (filter.startDate) params.start_date = `${filter.startDate}T00:00:00Z`
+      if (filter.endDate) params.end_date = `${filter.endDate}T23:59:59Z`
       
       const response = await axios.get(endpoint, {
         headers: {
@@ -53,6 +65,7 @@ export default function Orders() {
         params: params
       })
       setOrders(response.data || [])
+      setSelectedOrders({})
     } catch (error) {
       console.error('Failed to fetch orders:', error)
       
@@ -322,6 +335,175 @@ export default function Orders() {
     }
   }
 
+  const refreshOrderStatus = async (orderId) => {
+    setRefreshingStatus({ ...refreshingStatus, [orderId]: true })
+    try {
+      await axios.get(`/api/trading/check-order/${orderId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      showToast('success', `Đã refresh trạng thái lệnh #${orderId}`)
+      fetchOrders()
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Không thể refresh trạng thái lệnh'
+      showToast('danger', message)
+    } finally {
+      setRefreshingStatus({ ...refreshingStatus, [orderId]: false })
+    }
+  }
+
+  const cancelOrder = async (orderId) => {
+    setCancellingOrders({ ...cancellingOrders, [orderId]: true })
+    try {
+      await axios.post(`/api/trading/cancel-order/${orderId}`, {}, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      showToast('success', `Đã hủy lệnh #${orderId}`)
+      fetchOrders()
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Không thể hủy lệnh'
+      showToast('danger', message)
+    } finally {
+      setCancellingOrders({ ...cancellingOrders, [orderId]: false })
+    }
+  }
+
+  const getSelectedOrders = () => orders.filter((order) => selectedOrders[order.id])
+
+  const handleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedOrders({})
+      return
+    }
+    const next = {}
+    orders.forEach((order) => {
+      next[order.id] = true
+    })
+    setSelectedOrders(next)
+  }
+
+  const handleSelectOne = (orderId, checked) => {
+    setSelectedOrders((prev) => ({
+      ...prev,
+      [orderId]: checked
+    }))
+  }
+
+  const handleBulkCancel = async () => {
+    const selected = getSelectedOrders()
+    const pendingOrders = selected.filter((order) => order.status === 'pending')
+
+    if (pendingOrders.length === 0) {
+      showToast('warning', 'Chỉ có thể hủy lệnh pending')
+      return
+    }
+
+    setBulkSubmitting(true)
+    const results = await Promise.allSettled(
+      pendingOrders.map((order) =>
+        axios.post(`/api/trading/cancel-order/${order.id}`, {}, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+      )
+    )
+
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const errorCount = results.length - successCount
+    if (successCount > 0) {
+      showToast('success', `Đã hủy ${successCount} lệnh pending`)
+    }
+    if (errorCount > 0) {
+      showToast('danger', `Có ${errorCount} lệnh không hủy được`)
+    }
+    setBulkSubmitting(false)
+    fetchOrders()
+  }
+
+  const handleBulkRefreshStatus = async () => {
+    const selected = getSelectedOrders()
+    if (selected.length === 0) {
+      showToast('warning', 'Chọn lệnh để refresh trạng thái')
+      return
+    }
+
+    setBulkSubmitting(true)
+    const results = await Promise.allSettled(
+      selected.map((order) =>
+        axios.get(`/api/trading/check-order/${order.id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+      )
+    )
+
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const errorCount = results.length - successCount
+    if (successCount > 0) {
+      showToast('success', `Đã refresh ${successCount} lệnh`)
+    }
+    if (errorCount > 0) {
+      showToast('danger', `Có ${errorCount} lệnh không refresh được`)
+    }
+    setBulkSubmitting(false)
+    fetchOrders()
+  }
+
+  const exportCsv = () => {
+    if (orders.length === 0) {
+      showToast('warning', 'Không có dữ liệu để export')
+      return
+    }
+
+    const headers = [
+      'id',
+      'status',
+      'bot_config_name',
+      'symbol',
+      'side',
+      'amount',
+      'order_type',
+      'filled_price',
+      'price',
+      'stop_loss_price',
+      'take_profit_price',
+      'pnl',
+      'created_at',
+      'closed_at'
+    ]
+
+    const rows = orders.map((order) => ([
+      order.id,
+      order.status,
+      order.bot_config_name || '',
+      order.symbol,
+      order.side,
+      order.amount ?? '',
+      order.order_type || '',
+      order.filled_price ?? '',
+      order.price ?? '',
+      order.stop_loss_price ?? '',
+      order.take_profit_price ?? '',
+      order.pnl ?? '',
+      order.created_at ?? '',
+      order.closed_at ?? ''
+    ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')))
+
+    const csvContent = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `orders_${view}_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
       {toast && (
@@ -349,11 +531,43 @@ export default function Orders() {
         </ul>
       </div>
 
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div className="text-muted">
+          Đã chọn {Object.keys(selectedOrders).length} lệnh
+        </div>
+        <button
+          className="btn btn-outline-danger btn-sm"
+          onClick={handleBulkCancel}
+          disabled={bulkSubmitting}
+        >
+          {bulkSubmitting ? 'Đang xử lý...' : 'Hủy lệnh pending'}
+        </button>
+        <button
+          className="btn btn-outline-primary btn-sm"
+          onClick={handleBulkRefreshStatus}
+          disabled={bulkSubmitting}
+        >
+          Refresh trạng thái
+        </button>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={exportCsv}
+        >
+          Export CSV
+        </button>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => setSelectedOrders({})}
+        >
+          Bỏ chọn
+        </button>
+      </div>
+
       {/* Filters */}
       <div className="card mb-3">
         <div className="card-body">
           <div className="row g-3">
-            <div className="col-md-4">
+            <div className="col-md-3">
               <label className="form-label">Lọc theo hướng</label>
               <select
                 className="form-select"
@@ -367,7 +581,27 @@ export default function Orders() {
                 <option value="sell">Bán (Sell)</option>
               </select>
             </div>
-            <div className="col-md-4 d-flex align-items-end">
+            <div className="col-md-3">
+              <label className="form-label">Bot Config ID</label>
+              <input
+                type="number"
+                className="form-control"
+                value={filter.botConfigId}
+                onChange={(e) => setFilter({ ...filter, botConfigId: e.target.value })}
+                placeholder="VD: 12"
+              />
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Symbol</label>
+              <input
+                type="text"
+                className="form-control"
+                value={filter.symbol}
+                onChange={(e) => setFilter({ ...filter, symbol: e.target.value })}
+                placeholder="BTC/USDT"
+              />
+            </div>
+            <div className="col-md-3 d-flex align-items-end">
               <button
                 className="btn btn-primary w-100"
                 onClick={fetchOrders}
@@ -383,6 +617,24 @@ export default function Orders() {
                   <>🔄 Tải lại danh sách</>
                 )}
               </button>
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Từ ngày</label>
+              <input
+                type="date"
+                className="form-control"
+                value={filter.startDate}
+                onChange={(e) => setFilter({ ...filter, startDate: e.target.value })}
+              />
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Đến ngày</label>
+              <input
+                type="date"
+                className="form-control"
+                value={filter.endDate}
+                onChange={(e) => setFilter({ ...filter, endDate: e.target.value })}
+              />
             </div>
           </div>
         </div>
@@ -426,6 +678,14 @@ export default function Orders() {
               <table className="table table-hover mb-0">
                 <thead>
                   <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={orders.length > 0 && Object.keys(selectedOrders).length === orders.length}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </th>
                     <th>ID</th>
                     <th>Status</th>
                     <th>Bot</th>
@@ -445,6 +705,14 @@ export default function Orders() {
                 <tbody>
                   {orders.map((order) => (
                     <tr key={order.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={!!selectedOrders[order.id]}
+                          onChange={(e) => handleSelectOne(order.id, e.target.checked)}
+                        />
+                      </td>
                       <td>{order.id}</td>
                       <td>
                         <span 
@@ -526,6 +794,26 @@ export default function Orders() {
                               </button>
                             )
                           })()}
+
+                          {order.status === 'pending' ? (
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => cancelOrder(order.id)}
+                              disabled={cancellingOrders[order.id]}
+                            >
+                              {cancellingOrders[order.id] ? 'Đang hủy...' : 'Hủy lệnh'}
+                            </button>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+
+                          <button
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => refreshOrderStatus(order.id)}
+                            disabled={refreshingStatus[order.id]}
+                          >
+                            {refreshingStatus[order.id] ? 'Đang refresh...' : 'Refresh trạng thái'}
+                          </button>
 
                           {/* Chỉ hiển thị nút Refresh PnL cho:
                               - Lệnh đang mở (filled) - để xem unrealized PnL

@@ -207,6 +207,26 @@ class TradingService:
                 "success": False,
                 "error": str(e)
             }
+
+    def cancel_order(self, config: BotConfig, order: Order) -> Dict:
+        """Cancel an existing order on the exchange"""
+        try:
+            exchange = self.get_exchange(config)
+            symbol = self.normalize_symbol(order.symbol, config.trading_mode)
+
+            self._sync_exchange_time(exchange)
+            result = exchange.cancel_order(order.exchange_order_id, symbol)
+
+            return {
+                "success": True,
+                "order": result
+            }
+        except Exception as e:
+            logger.error(f"Failed to cancel order {order.id}: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
     def calculate_sl_tp_prices(
         self,
