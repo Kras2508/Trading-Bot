@@ -55,3 +55,11 @@ class OrderHistoryFilter(BaseModel):
     limit: int = 100
     offset: int = 0
 
+
+class OrderUpdate(BaseModel):
+    amount: Optional[float] = None
+    price: Optional[float] = None
+    stop_loss_price: Optional[float] = None
+    take_profit_price: Optional[float] = None
+    tp_levels: Optional[List[Dict]] = None
+

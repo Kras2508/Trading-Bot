@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 
@@ -7,7 +7,13 @@ export default function Orders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [toast, setToast] = useState(null)
+  const toastTimeoutRef = useRef(null)
   const [refreshingPnL, setRefreshingPnL] = useState({}) // Track which order is refreshing
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editFormData, setEditFormData] = useState(null)
+  const [editErrors, setEditErrors] = useState({})
+  const [editSubmitting, setEditSubmitting] = useState(false)
   const [filter, setFilter] = useState({
     status: '',
     side: '',
@@ -19,6 +25,14 @@ export default function Orders() {
       fetchOrders()
     }
   }, [token, filter.showCompletedOnly])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const fetchOrders = async () => {
     setLoading(true)
@@ -70,6 +84,143 @@ export default function Orders() {
       setError(errorMessage)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const showToast = (type, text) => {
+    setToast({ type, text })
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }
+
+  const getEditEligibility = (order) => {
+    const orderType = (order.order_type || 'market').toLowerCase()
+    if (order.status === 'pending' && orderType === 'limit') {
+      return { allowed: true, reason: '' }
+    }
+
+    if (order.status === 'pending') {
+      return { allowed: false, reason: 'Chỉ lệnh pending limit mới được chỉnh sửa' }
+    }
+
+    if (order.status === 'filled' || order.status === 'closed') {
+      return { allowed: false, reason: 'Lệnh đã khớp/đóng, không thể sửa dữ liệu khớp' }
+    }
+
+    if (order.status === 'cancelled') {
+      return { allowed: false, reason: 'Lệnh đã hủy, không thể sửa' }
+    }
+
+    if (order.status === 'error') {
+      return { allowed: false, reason: 'Lệnh lỗi, không thể sửa' }
+    }
+
+    return { allowed: false, reason: 'Lệnh không thể sửa trong trạng thái hiện tại' }
+  }
+
+  const validateEditForm = (data) => {
+    const errors = {}
+
+    const amount = Number(data.amount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      errors.amount = 'Amount phải lớn hơn 0'
+    }
+
+    const price = Number(data.price)
+    if (!Number.isFinite(price) || price <= 0) {
+      errors.price = 'Price phải lớn hơn 0'
+    }
+
+    if (data.stop_loss_price !== '' && data.stop_loss_price !== null) {
+      const stopLoss = Number(data.stop_loss_price)
+      if (!Number.isFinite(stopLoss) || stopLoss < 0) {
+        errors.stop_loss_price = 'Stop loss phải >= 0'
+      }
+    }
+
+    if (data.take_profit_price !== '' && data.take_profit_price !== null) {
+      const takeProfit = Number(data.take_profit_price)
+      if (!Number.isFinite(takeProfit) || takeProfit < 0) {
+        errors.take_profit_price = 'Take profit phải >= 0'
+      }
+    }
+
+    return {
+      errors,
+      isValid: Object.keys(errors).length === 0
+    }
+  }
+
+  const openEditModal = (order) => {
+    const eligibility = getEditEligibility(order)
+    if (!eligibility.allowed) {
+      showToast('warning', eligibility.reason)
+      return
+    }
+
+    setEditErrors({})
+    setEditFormData({
+      id: order.id,
+      symbol: order.symbol,
+      order_type: order.order_type || 'market',
+      status: order.status,
+      amount: order.amount ?? '',
+      price: order.price ?? '',
+      stop_loss_price: order.stop_loss_price ?? '',
+      take_profit_price: order.take_profit_price ?? ''
+    })
+    setShowEditModal(true)
+  }
+
+  const closeEditModal = () => {
+    if (editSubmitting) {
+      return
+    }
+    setShowEditModal(false)
+    setEditFormData(null)
+    setEditErrors({})
+  }
+
+  const handleUpdate = async (e) => {
+    e.preventDefault()
+    if (!editFormData) {
+      return
+    }
+
+    const { errors, isValid } = validateEditForm(editFormData)
+    if (!isValid) {
+      setEditErrors(errors)
+      return
+    }
+
+    setEditSubmitting(true)
+    setEditErrors({})
+    try {
+      const payload = {
+        amount: Number(editFormData.amount),
+        price: Number(editFormData.price),
+        stop_loss_price: editFormData.stop_loss_price === '' ? null : Number(editFormData.stop_loss_price),
+        take_profit_price: editFormData.take_profit_price === '' ? null : Number(editFormData.take_profit_price)
+      }
+
+      await axios.patch(`/api/orders/${editFormData.id}`, payload, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      showToast('success', 'Cập nhật lệnh thành công.')
+      closeEditModal()
+      fetchOrders()
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Cập nhật lệnh thất bại'
+      showToast('danger', message)
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -163,6 +314,13 @@ export default function Orders() {
 
   return (
     <div>
+      {toast && (
+        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1080 }}>
+          <div className={`alert alert-${toast.type} shadow-sm mb-0`} role="alert">
+            {toast.text}
+          </div>
+        </div>
+      )}
       <h2 className="mb-4">Lịch Sử Lệnh</h2>
 
       {/* Filters */}
@@ -367,28 +525,53 @@ export default function Orders() {
                         )}
                       </td>
                       <td>
-                        {/* Chỉ hiển thị nút Refresh PnL cho:
-                            - Lệnh đang mở (filled) - để xem unrealized PnL
-                            - Lệnh đã đóng nhưng chưa có PnL */}
-                        {(order.status === 'filled' || (order.status === 'closed' && (!order.pnl || order.pnl === 0))) ? (
-                          <button
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={() => refreshPnL(order.id)}
-                            disabled={refreshingPnL[order.id]}
-                            title={order.status === 'filled' ? 'Lấy unrealized PnL từ sàn' : 'Lấy lại PnL từ sàn'}
-                          >
-                            {refreshingPnL[order.id] ? (
-                              <>
-                                <span className="spinner-border spinner-border-sm me-1" role="status"></span>
-                                Đang lấy...
-                              </>
-                            ) : (
-                              <>🔄 Refresh PnL</>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
+                        <div className="d-flex flex-column gap-1">
+                          {(() => {
+                            const eligibility = getEditEligibility(order)
+                            if (eligibility.allowed) {
+                              return (
+                                <button
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={() => openEditModal(order)}
+                                >
+                                  Sửa
+                                </button>
+                              )
+                            }
+
+                            return (
+                              <button
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() => showToast('warning', eligibility.reason)}
+                              >
+                                Không thể sửa
+                              </button>
+                            )
+                          })()}
+
+                          {/* Chỉ hiển thị nút Refresh PnL cho:
+                              - Lệnh đang mở (filled) - để xem unrealized PnL
+                              - Lệnh đã đóng nhưng chưa có PnL */}
+                          {(order.status === 'filled' || (order.status === 'closed' && (!order.pnl || order.pnl === 0))) ? (
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => refreshPnL(order.id)}
+                              disabled={refreshingPnL[order.id]}
+                              title={order.status === 'filled' ? 'Lấy unrealized PnL từ sàn' : 'Lấy lại PnL từ sàn'}
+                            >
+                              {refreshingPnL[order.id] ? (
+                                <>
+                                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                                  Đang lấy...
+                                </>
+                              ) : (
+                                <>🔄 Refresh PnL</>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <small>{formatDateTime(order.created_at)}</small>
@@ -409,6 +592,126 @@ export default function Orders() {
             Hiển thị {orders.length} lệnh
             {filter.showCompletedOnly && ' (chỉ lệnh đã hoàn thành)'}
           </small>
+        </div>
+      )}
+
+      {showEditModal && editFormData && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Chỉnh sửa lệnh #{editFormData.id}</h5>
+                <button className="btn-close" onClick={closeEditModal}></button>
+              </div>
+              <form onSubmit={handleUpdate}>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Symbol</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={editFormData.symbol}
+                      disabled
+                    />
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Order Type</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editFormData.order_type}
+                          disabled
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Status</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editFormData.status}
+                          disabled
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Amount</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.amount ? 'is-invalid' : ''}`}
+                          value={editFormData.amount}
+                          onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                          step="0.0001"
+                        />
+                        {editErrors.amount && <div className="invalid-feedback">{editErrors.amount}</div>}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Price</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.price ? 'is-invalid' : ''}`}
+                          value={editFormData.price}
+                          onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
+                          step="0.01"
+                        />
+                        {editErrors.price && <div className="invalid-feedback">{editErrors.price}</div>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Stop Loss</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.stop_loss_price ? 'is-invalid' : ''}`}
+                          value={editFormData.stop_loss_price}
+                          onChange={(e) => setEditFormData({ ...editFormData, stop_loss_price: e.target.value })}
+                          step="0.01"
+                          placeholder="Để trống nếu không dùng"
+                        />
+                        {editErrors.stop_loss_price && (
+                          <div className="invalid-feedback">{editErrors.stop_loss_price}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Take Profit</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.take_profit_price ? 'is-invalid' : ''}`}
+                          value={editFormData.take_profit_price}
+                          onChange={(e) => setEditFormData({ ...editFormData, take_profit_price: e.target.value })}
+                          step="0.01"
+                          placeholder="Để trống nếu không dùng"
+                        />
+                        {editErrors.take_profit_price && (
+                          <div className="invalid-feedback">{editErrors.take_profit_price}</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={closeEditModal} disabled={editSubmitting}>
+                    Hủy
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={editSubmitting}>
+                    {editSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>
