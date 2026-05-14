@@ -358,6 +358,76 @@ async def close_order(
         )
 
 
+@router.post("/cancel-order/{order_id}")
+async def cancel_order(
+    order_id: int,
+    username: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    """Cancel a pending order on the exchange"""
+    try:
+        order = db.query(Order).filter(Order.id == order_id).first()
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Order {order_id} not found"
+            )
+
+        if order.status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Order {order_id} is not pending"
+            )
+
+        config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bot config not found"
+            )
+
+        if not order.exchange_order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order does not have exchange order ID"
+            )
+
+        cancel_result = trading_service.cancel_order(config, order)
+        if not cancel_result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to cancel order: {cancel_result.get('error')}"
+            )
+
+        order.status = "cancelled"
+        order.closed_at = datetime.utcnow()
+        db.commit()
+
+        activity_log_service.log_activity(
+            db=db,
+            level="info",
+            category="trading",
+            message=f"Order cancelled: {order_id}",
+            bot_config_id=config.id,
+            order_id=order_id
+        )
+
+        return {
+            "status": "success",
+            "message": f"Order {order_id} cancelled",
+            "order_id": order_id,
+            "exchange_order": cancel_result.get("order")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Cancel order error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
 @router.get("/symbols/{config_id}")
 async def get_symbols(
     config_id: int,

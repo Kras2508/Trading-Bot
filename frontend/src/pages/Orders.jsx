@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 
@@ -7,30 +7,56 @@ export default function Orders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [toast, setToast] = useState(null)
+  const toastTimeoutRef = useRef(null)
   const [refreshingPnL, setRefreshingPnL] = useState({}) // Track which order is refreshing
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editFormData, setEditFormData] = useState(null)
+  const [editErrors, setEditErrors] = useState({})
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [view, setView] = useState('all')
   const [filter, setFilter] = useState({
-    status: '',
     side: '',
-    showCompletedOnly: false
+    symbol: '',
+    botConfigId: '',
+    startDate: '',
+    endDate: ''
   })
+  const [selectedOrders, setSelectedOrders] = useState({})
+  const [refreshingStatus, setRefreshingStatus] = useState({})
+  const [cancellingOrders, setCancellingOrders] = useState({})
 
   useEffect(() => {
     if (token) {
       fetchOrders()
     }
-  }, [token, filter.showCompletedOnly])
+  }, [token, view, filter.side, filter.symbol, filter.botConfigId, filter.startDate, filter.endDate])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const fetchOrders = async () => {
     setLoading(true)
     setError(null)
     try {
-      const endpoint = filter.showCompletedOnly 
-        ? '/api/orders/completed' 
+      const isCompletedView = view === 'completed'
+      const endpoint = isCompletedView
+        ? '/api/orders/completed'
         : '/api/orders/history'
       
       const params = {}
-      if (filter.status) params.status = filter.status
+      if (!isCompletedView && view !== 'all') params.status = view
       if (filter.side) params.side = filter.side
+      if (filter.symbol.trim()) params.symbol = filter.symbol.trim()
+      if (filter.botConfigId) params.bot_config_id = Number(filter.botConfigId)
+      if (filter.startDate) params.start_date = `${filter.startDate}T00:00:00Z`
+      if (filter.endDate) params.end_date = `${filter.endDate}T23:59:59Z`
       
       const response = await axios.get(endpoint, {
         headers: {
@@ -39,6 +65,7 @@ export default function Orders() {
         params: params
       })
       setOrders(response.data || [])
+      setSelectedOrders({})
     } catch (error) {
       console.error('Failed to fetch orders:', error)
       
@@ -73,6 +100,143 @@ export default function Orders() {
     }
   }
 
+  const showToast = (type, text) => {
+    setToast({ type, text })
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null)
+    }, 3000)
+  }
+
+  const getEditEligibility = (order) => {
+    const orderType = (order.order_type || 'market').toLowerCase()
+    if (order.status === 'pending' && orderType === 'limit') {
+      return { allowed: true, reason: '' }
+    }
+
+    if (order.status === 'pending') {
+      return { allowed: false, reason: 'Chỉ lệnh pending limit mới được chỉnh sửa' }
+    }
+
+    if (order.status === 'filled' || order.status === 'closed') {
+      return { allowed: false, reason: 'Lệnh đã khớp/đóng, không thể sửa dữ liệu khớp' }
+    }
+
+    if (order.status === 'cancelled') {
+      return { allowed: false, reason: 'Lệnh đã hủy, không thể sửa' }
+    }
+
+    if (order.status === 'error') {
+      return { allowed: false, reason: 'Lệnh lỗi, không thể sửa' }
+    }
+
+    return { allowed: false, reason: 'Lệnh không thể sửa trong trạng thái hiện tại' }
+  }
+
+  const validateEditForm = (data) => {
+    const errors = {}
+
+    const amount = Number(data.amount)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      errors.amount = 'Amount phải lớn hơn 0'
+    }
+
+    const price = Number(data.price)
+    if (!Number.isFinite(price) || price <= 0) {
+      errors.price = 'Price phải lớn hơn 0'
+    }
+
+    if (data.stop_loss_price !== '' && data.stop_loss_price !== null) {
+      const stopLoss = Number(data.stop_loss_price)
+      if (!Number.isFinite(stopLoss) || stopLoss < 0) {
+        errors.stop_loss_price = 'Stop loss phải >= 0'
+      }
+    }
+
+    if (data.take_profit_price !== '' && data.take_profit_price !== null) {
+      const takeProfit = Number(data.take_profit_price)
+      if (!Number.isFinite(takeProfit) || takeProfit < 0) {
+        errors.take_profit_price = 'Take profit phải >= 0'
+      }
+    }
+
+    return {
+      errors,
+      isValid: Object.keys(errors).length === 0
+    }
+  }
+
+  const openEditModal = (order) => {
+    const eligibility = getEditEligibility(order)
+    if (!eligibility.allowed) {
+      showToast('warning', eligibility.reason)
+      return
+    }
+
+    setEditErrors({})
+    setEditFormData({
+      id: order.id,
+      symbol: order.symbol,
+      order_type: order.order_type || 'market',
+      status: order.status,
+      amount: order.amount ?? '',
+      price: order.price ?? '',
+      stop_loss_price: order.stop_loss_price ?? '',
+      take_profit_price: order.take_profit_price ?? ''
+    })
+    setShowEditModal(true)
+  }
+
+  const closeEditModal = () => {
+    if (editSubmitting) {
+      return
+    }
+    setShowEditModal(false)
+    setEditFormData(null)
+    setEditErrors({})
+  }
+
+  const handleUpdate = async (e) => {
+    e.preventDefault()
+    if (!editFormData) {
+      return
+    }
+
+    const { errors, isValid } = validateEditForm(editFormData)
+    if (!isValid) {
+      setEditErrors(errors)
+      return
+    }
+
+    setEditSubmitting(true)
+    setEditErrors({})
+    try {
+      const payload = {
+        amount: Number(editFormData.amount),
+        price: Number(editFormData.price),
+        stop_loss_price: editFormData.stop_loss_price === '' ? null : Number(editFormData.stop_loss_price),
+        take_profit_price: editFormData.take_profit_price === '' ? null : Number(editFormData.take_profit_price)
+      }
+
+      await axios.patch(`/api/orders/${editFormData.id}`, payload, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      showToast('success', 'Cập nhật lệnh thành công.')
+      closeEditModal()
+      fetchOrders()
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Cập nhật lệnh thất bại'
+      showToast('danger', message)
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
   const getStatusBadge = (status) => {
     const badges = {
       filled: 'bg-success',
@@ -93,6 +257,16 @@ export default function Orders() {
       error: 'Lỗi'
     }
     return texts[status] || status
+  }
+
+  const viewLabels = {
+    all: 'Tất cả',
+    pending: 'Đang chờ',
+    filled: 'Đã khớp',
+    closed: 'Đã đóng',
+    cancelled: 'Đã hủy',
+    error: 'Lỗi',
+    completed: 'Hoàn thành'
   }
 
   const getStatusTooltip = (status) => {
@@ -161,30 +335,238 @@ export default function Orders() {
     }
   }
 
+  const refreshOrderStatus = async (orderId) => {
+    setRefreshingStatus({ ...refreshingStatus, [orderId]: true })
+    try {
+      await axios.get(`/api/trading/check-order/${orderId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      showToast('success', `Đã refresh trạng thái lệnh #${orderId}`)
+      fetchOrders()
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Không thể refresh trạng thái lệnh'
+      showToast('danger', message)
+    } finally {
+      setRefreshingStatus({ ...refreshingStatus, [orderId]: false })
+    }
+  }
+
+  const cancelOrder = async (orderId) => {
+    setCancellingOrders({ ...cancellingOrders, [orderId]: true })
+    try {
+      await axios.post(`/api/trading/cancel-order/${orderId}`, {}, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      showToast('success', `Đã hủy lệnh #${orderId}`)
+      fetchOrders()
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Không thể hủy lệnh'
+      showToast('danger', message)
+    } finally {
+      setCancellingOrders({ ...cancellingOrders, [orderId]: false })
+    }
+  }
+
+  const getSelectedOrders = () => orders.filter((order) => selectedOrders[order.id])
+
+  const handleSelectAll = (checked) => {
+    if (!checked) {
+      setSelectedOrders({})
+      return
+    }
+    const next = {}
+    orders.forEach((order) => {
+      next[order.id] = true
+    })
+    setSelectedOrders(next)
+  }
+
+  const handleSelectOne = (orderId, checked) => {
+    setSelectedOrders((prev) => ({
+      ...prev,
+      [orderId]: checked
+    }))
+  }
+
+  const handleBulkCancel = async () => {
+    const selected = getSelectedOrders()
+    const pendingOrders = selected.filter((order) => order.status === 'pending')
+
+    if (pendingOrders.length === 0) {
+      showToast('warning', 'Chỉ có thể hủy lệnh pending')
+      return
+    }
+
+    setBulkSubmitting(true)
+    const results = await Promise.allSettled(
+      pendingOrders.map((order) =>
+        axios.post(`/api/trading/cancel-order/${order.id}`, {}, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+      )
+    )
+
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const errorCount = results.length - successCount
+    if (successCount > 0) {
+      showToast('success', `Đã hủy ${successCount} lệnh pending`)
+    }
+    if (errorCount > 0) {
+      showToast('danger', `Có ${errorCount} lệnh không hủy được`)
+    }
+    setBulkSubmitting(false)
+    fetchOrders()
+  }
+
+  const handleBulkRefreshStatus = async () => {
+    const selected = getSelectedOrders()
+    if (selected.length === 0) {
+      showToast('warning', 'Chọn lệnh để refresh trạng thái')
+      return
+    }
+
+    setBulkSubmitting(true)
+    const results = await Promise.allSettled(
+      selected.map((order) =>
+        axios.get(`/api/trading/check-order/${order.id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+      )
+    )
+
+    const successCount = results.filter((result) => result.status === 'fulfilled').length
+    const errorCount = results.length - successCount
+    if (successCount > 0) {
+      showToast('success', `Đã refresh ${successCount} lệnh`)
+    }
+    if (errorCount > 0) {
+      showToast('danger', `Có ${errorCount} lệnh không refresh được`)
+    }
+    setBulkSubmitting(false)
+    fetchOrders()
+  }
+
+  const exportCsv = () => {
+    if (orders.length === 0) {
+      showToast('warning', 'Không có dữ liệu để export')
+      return
+    }
+
+    const headers = [
+      'id',
+      'status',
+      'bot_config_name',
+      'symbol',
+      'side',
+      'amount',
+      'order_type',
+      'filled_price',
+      'price',
+      'stop_loss_price',
+      'take_profit_price',
+      'pnl',
+      'created_at',
+      'closed_at'
+    ]
+
+    const rows = orders.map((order) => ([
+      order.id,
+      order.status,
+      order.bot_config_name || '',
+      order.symbol,
+      order.side,
+      order.amount ?? '',
+      order.order_type || '',
+      order.filled_price ?? '',
+      order.price ?? '',
+      order.stop_loss_price ?? '',
+      order.take_profit_price ?? '',
+      order.pnl ?? '',
+      order.created_at ?? '',
+      order.closed_at ?? ''
+    ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')))
+
+    const csvContent = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `orders_${view}_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
+      {toast && (
+        <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1080 }}>
+          <div className={`alert alert-${toast.type} shadow-sm mb-0`} role="alert">
+            {toast.text}
+          </div>
+        </div>
+      )}
       <h2 className="mb-4">Lịch Sử Lệnh</h2>
+
+      <div className="mb-3">
+        <ul className="nav nav-pills flex-wrap gap-2">
+          {['all', 'pending', 'filled', 'closed', 'cancelled', 'error', 'completed'].map((tab) => (
+            <li className="nav-item" key={tab}>
+              <button
+                className={`nav-link ${view === tab ? 'active' : ''}`}
+                type="button"
+                onClick={() => setView(tab)}
+              >
+                {viewLabels[tab]}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div className="text-muted">
+          Đã chọn {Object.keys(selectedOrders).length} lệnh
+        </div>
+        <button
+          className="btn btn-outline-danger btn-sm"
+          onClick={handleBulkCancel}
+          disabled={bulkSubmitting}
+        >
+          {bulkSubmitting ? 'Đang xử lý...' : 'Hủy lệnh pending'}
+        </button>
+        <button
+          className="btn btn-outline-primary btn-sm"
+          onClick={handleBulkRefreshStatus}
+          disabled={bulkSubmitting}
+        >
+          Refresh trạng thái
+        </button>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={exportCsv}
+        >
+          Export CSV
+        </button>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => setSelectedOrders({})}
+        >
+          Bỏ chọn
+        </button>
+      </div>
 
       {/* Filters */}
       <div className="card mb-3">
         <div className="card-body">
           <div className="row g-3">
-            <div className="col-md-3">
-              <label className="form-label">Lọc theo trạng thái</label>
-              <select
-                className="form-select"
-                value={filter.status}
-                onChange={(e) => {
-                  setFilter({ ...filter, status: e.target.value })
-                }}
-              >
-                <option value="">Tất cả</option>
-                <option value="filled">Đã khớp</option>
-                <option value="closed">Đã đóng</option>
-                <option value="pending">Đang chờ</option>
-                <option value="cancelled">Đã hủy</option>
-              </select>
-            </div>
             <div className="col-md-3">
               <label className="form-label">Lọc theo hướng</label>
               <select
@@ -199,21 +581,25 @@ export default function Orders() {
                 <option value="sell">Bán (Sell)</option>
               </select>
             </div>
-            <div className="col-md-3 d-flex align-items-end">
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="showCompletedOnly"
-                  checked={filter.showCompletedOnly}
-                  onChange={(e) => {
-                    setFilter({ ...filter, showCompletedOnly: e.target.checked })
-                  }}
-                />
-                <label className="form-check-label" htmlFor="showCompletedOnly">
-                  Chỉ hiển thị lệnh đã hoàn thành
-                </label>
-              </div>
+            <div className="col-md-3">
+              <label className="form-label">Bot Config ID</label>
+              <input
+                type="number"
+                className="form-control"
+                value={filter.botConfigId}
+                onChange={(e) => setFilter({ ...filter, botConfigId: e.target.value })}
+                placeholder="VD: 12"
+              />
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Symbol</label>
+              <input
+                type="text"
+                className="form-control"
+                value={filter.symbol}
+                onChange={(e) => setFilter({ ...filter, symbol: e.target.value })}
+                placeholder="BTC/USDT"
+              />
             </div>
             <div className="col-md-3 d-flex align-items-end">
               <button
@@ -231,6 +617,24 @@ export default function Orders() {
                   <>🔄 Tải lại danh sách</>
                 )}
               </button>
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Từ ngày</label>
+              <input
+                type="date"
+                className="form-control"
+                value={filter.startDate}
+                onChange={(e) => setFilter({ ...filter, startDate: e.target.value })}
+              />
+            </div>
+            <div className="col-md-3">
+              <label className="form-label">Đến ngày</label>
+              <input
+                type="date"
+                className="form-control"
+                value={filter.endDate}
+                onChange={(e) => setFilter({ ...filter, endDate: e.target.value })}
+              />
             </div>
           </div>
         </div>
@@ -264,9 +668,9 @@ export default function Orders() {
           {orders.length === 0 ? (
             <div className="card-body text-center py-5">
               <p className="text-muted mb-0">
-                {filter.showCompletedOnly 
-                  ? 'Chưa có lệnh nào đã hoàn thành' 
-                  : 'Chưa có lệnh nào'}
+                {view === 'completed'
+                  ? 'Chưa có lệnh nào đã hoàn thành'
+                  : `Chưa có lệnh nào (${viewLabels[view]})`}
               </p>
             </div>
           ) : (
@@ -274,52 +678,71 @@ export default function Orders() {
               <table className="table table-hover mb-0">
                 <thead>
                   <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={orders.length > 0 && Object.keys(selectedOrders).length === orders.length}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </th>
                     <th>ID</th>
-                    <th>Bot Config</th>
+                    <th>Status</th>
+                    <th>Bot</th>
                     <th>Symbol</th>
-                    <th>Mode</th>
                     <th>Side</th>
-                    <th>Type</th>
                     <th>Amount</th>
-                    <th>Entry Price</th>
+                    <th>Type</th>
+                    <th>Filled Price</th>
                     <th>Stop Loss</th>
                     <th>Take Profit</th>
-                    <th>Status</th>
                     <th>PnL</th>
-                    <th>ROI</th>
                     <th>Actions</th>
                     <th>Created</th>
+                    <th>Closed</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((order) => (
                     <tr key={order.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={!!selectedOrders[order.id]}
+                          onChange={(e) => handleSelectOne(order.id, e.target.checked)}
+                        />
+                      </td>
                       <td>{order.id}</td>
                       <td>
-                        <small className="text-muted" title={`Bot Config ID: ${order.bot_config_id}`}>
-                          {order.bot_config_name || `Bot #${order.bot_config_id}`}
-                        </small>
-                      </td>
-                      <td><strong>{order.symbol}</strong></td>
-                      <td>
-                        <span className={`badge ${order.trading_mode === 'futures' ? 'bg-warning text-dark' : 'bg-info'}`}>
-                          {order.trading_mode === 'futures' ? 'Futures' : 'Spot'}
+                        <span 
+                          className={`badge ${getStatusBadge(order.status)}`}
+                          title={getStatusTooltip(order.status)}
+                          style={{ cursor: 'help' }}
+                        >
+                          {getStatusText(order.status)}
                         </span>
                       </td>
+                      <td>
+                        <div className="fw-semibold" title={`Bot Config ID: ${order.bot_config_id}`}>
+                          {order.bot_config_name || `Bot #${order.bot_config_id}`}
+                        </div>
+                      </td>
+                      <td><strong>{order.symbol}</strong></td>
                       <td>
                         <span className={`badge ${order.side === 'buy' ? 'bg-success' : 'bg-danger'}`}>
                           {order.side.toUpperCase()}
                         </span>
                       </td>
+                      <td>{order.amount ? parseFloat(order.amount).toFixed(4) : '-'}</td>
                       <td>
                         <small className="text-muted">{order.order_type || 'market'}</small>
                       </td>
-                      <td>{order.amount ? parseFloat(order.amount).toFixed(4) : '-'}</td>
                       <td>
                         {order.filled_price 
                           ? <strong>{parseFloat(order.filled_price || 0).toFixed(2)}</strong>
                           : order.price 
-                            ? <span className="text-muted">{parseFloat(order.price || 0).toFixed(2)}</span>
+                            ? <span className="text-muted">Limit: {parseFloat(order.price || 0).toFixed(2)}</span>
                             : '-'
                         }
                       </td>
@@ -338,15 +761,6 @@ export default function Orders() {
                         )}
                       </td>
                       <td>
-                        <span 
-                          className={`badge ${getStatusBadge(order.status)}`}
-                          title={getStatusTooltip(order.status)}
-                          style={{ cursor: 'help' }}
-                        >
-                          {getStatusText(order.status)}
-                        </span>
-                      </td>
-                      <td>
                         {/* PnL: Số tiền (USDT) */}
                         {order.pnl !== undefined && order.pnl !== null && !isNaN(parseFloat(order.pnl)) && order.pnl !== 0 ? (
                           <span className={order.pnl > 0 ? 'text-success fw-bold' : 'text-danger fw-bold'}>
@@ -357,41 +771,79 @@ export default function Orders() {
                         )}
                       </td>
                       <td>
-                        {/* ROI: Phần trăm (%) */}
-                        {order.pnl_percent !== undefined && order.pnl_percent !== null && !isNaN(parseFloat(order.pnl_percent)) && order.pnl_percent !== 0 ? (
-                          <span className={order.pnl_percent > 0 ? 'text-success fw-bold' : 'text-danger fw-bold'}>
-                            {order.pnl_percent > 0 ? '+' : ''}{parseFloat(order.pnl_percent).toFixed(2)}%
-                          </span>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        {/* Chỉ hiển thị nút Refresh PnL cho:
-                            - Lệnh đang mở (filled) - để xem unrealized PnL
-                            - Lệnh đã đóng nhưng chưa có PnL */}
-                        {(order.status === 'filled' || (order.status === 'closed' && (!order.pnl || order.pnl === 0))) ? (
+                        <div className="d-flex flex-column gap-1">
+                          {(() => {
+                            const eligibility = getEditEligibility(order)
+                            if (eligibility.allowed) {
+                              return (
+                                <button
+                                  className="btn btn-sm btn-outline-primary"
+                                  onClick={() => openEditModal(order)}
+                                >
+                                  Sửa
+                                </button>
+                              )
+                            }
+
+                            return (
+                              <button
+                                className="btn btn-sm btn-outline-secondary"
+                                onClick={() => showToast('warning', eligibility.reason)}
+                              >
+                                Không thể sửa
+                              </button>
+                            )
+                          })()}
+
+                          {order.status === 'pending' ? (
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => cancelOrder(order.id)}
+                              disabled={cancellingOrders[order.id]}
+                            >
+                              {cancellingOrders[order.id] ? 'Đang hủy...' : 'Hủy lệnh'}
+                            </button>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+
                           <button
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={() => refreshPnL(order.id)}
-                            disabled={refreshingPnL[order.id]}
-                            title={order.status === 'filled' ? 'Lấy unrealized PnL từ sàn' : 'Lấy lại PnL từ sàn'}
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => refreshOrderStatus(order.id)}
+                            disabled={refreshingStatus[order.id]}
                           >
-                            {refreshingPnL[order.id] ? (
-                              <>
-                                <span className="spinner-border spinner-border-sm me-1" role="status"></span>
-                                Đang lấy...
-                              </>
-                            ) : (
-                              <>🔄 Refresh PnL</>
-                            )}
+                            {refreshingStatus[order.id] ? 'Đang refresh...' : 'Refresh trạng thái'}
                           </button>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
+
+                          {/* Chỉ hiển thị nút Refresh PnL cho:
+                              - Lệnh đang mở (filled) - để xem unrealized PnL
+                              - Lệnh đã đóng nhưng chưa có PnL */}
+                          {(order.status === 'filled' || (order.status === 'closed' && (!order.pnl || order.pnl === 0))) ? (
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => refreshPnL(order.id)}
+                              disabled={refreshingPnL[order.id]}
+                              title={order.status === 'filled' ? 'Lấy unrealized PnL từ sàn' : 'Lấy lại PnL từ sàn'}
+                            >
+                              {refreshingPnL[order.id] ? (
+                                <>
+                                  <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                                  Đang lấy...
+                                </>
+                              ) : (
+                                <>🔄 Refresh PnL</>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <small>{formatDateTime(order.created_at)}</small>
+                      </td>
+                      <td>
+                        <small>{formatDateTime(order.closed_at)}</small>
                       </td>
                     </tr>
                   ))}
@@ -406,9 +858,128 @@ export default function Orders() {
       {!loading && orders.length > 0 && (
         <div className="mt-3">
           <small className="text-muted">
-            Hiển thị {orders.length} lệnh
-            {filter.showCompletedOnly && ' (chỉ lệnh đã hoàn thành)'}
+            Hiển thị {orders.length} lệnh ({viewLabels[view]})
           </small>
+        </div>
+      )}
+
+      {showEditModal && editFormData && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Chỉnh sửa lệnh #{editFormData.id}</h5>
+                <button className="btn-close" onClick={closeEditModal}></button>
+              </div>
+              <form onSubmit={handleUpdate}>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label">Symbol</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={editFormData.symbol}
+                      disabled
+                    />
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Order Type</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editFormData.order_type}
+                          disabled
+                        />
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Status</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editFormData.status}
+                          disabled
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Amount</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.amount ? 'is-invalid' : ''}`}
+                          value={editFormData.amount}
+                          onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })}
+                          step="0.0001"
+                        />
+                        {editErrors.amount && <div className="invalid-feedback">{editErrors.amount}</div>}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Price</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.price ? 'is-invalid' : ''}`}
+                          value={editFormData.price}
+                          onChange={(e) => setEditFormData({ ...editFormData, price: e.target.value })}
+                          step="0.01"
+                        />
+                        {editErrors.price && <div className="invalid-feedback">{editErrors.price}</div>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row">
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Stop Loss</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.stop_loss_price ? 'is-invalid' : ''}`}
+                          value={editFormData.stop_loss_price}
+                          onChange={(e) => setEditFormData({ ...editFormData, stop_loss_price: e.target.value })}
+                          step="0.01"
+                          placeholder="Để trống nếu không dùng"
+                        />
+                        {editErrors.stop_loss_price && (
+                          <div className="invalid-feedback">{editErrors.stop_loss_price}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <div className="mb-3">
+                        <label className="form-label">Take Profit</label>
+                        <input
+                          type="number"
+                          className={`form-control ${editErrors.take_profit_price ? 'is-invalid' : ''}`}
+                          value={editFormData.take_profit_price}
+                          onChange={(e) => setEditFormData({ ...editFormData, take_profit_price: e.target.value })}
+                          step="0.01"
+                          placeholder="Để trống nếu không dùng"
+                        />
+                        {editErrors.take_profit_price && (
+                          <div className="invalid-feedback">{editErrors.take_profit_price}</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={closeEditModal} disabled={editSubmitting}>
+                    Hủy
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={editSubmitting}>
+                    {editSubmitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       )}
     </div>
