@@ -95,13 +95,20 @@ async def create_config(
 async def list_configs(
     skip: int = 0,
     limit: int = 100,
+    active_only: bool = False,
     username: str = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
     """List all bot configurations"""
     try:
+        query = db.query(BotConfig)
+        
+        # Optional filter: only active bots
+        if active_only:
+            query = query.filter(BotConfig.is_active == True)
+        
         # SQL Server requires ORDER BY when using OFFSET/LIMIT
-        configs = db.query(BotConfig).order_by(BotConfig.id).offset(skip).limit(limit).all()
+        configs = query.order_by(BotConfig.id).offset(skip).limit(limit).all()
         logger.info(f"Found {len(configs)} configs for user {username}")
         return configs
     except Exception as e:
