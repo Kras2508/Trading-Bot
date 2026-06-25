@@ -13,6 +13,7 @@ from app.schemas.bot_status import BotStatusResponse
 from app.core.security import verify_token
 from app.services.telegram_service import telegram_service
 from app.services.health_check_service import HealthCheckService
+from app.utils.response import success_response
 
 router = APIRouter()
 
@@ -229,12 +230,13 @@ async def health_check(
     
     db.commit()
     
-    return {
+    health_data = {
         "status": "healthy" if not unhealthy_bots else "warning",
         "unhealthy_bots": unhealthy_bots,
         "total_bots": len(all_bots),
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.utcnow().isoformat()
     }
+    return success_response(data=health_data, message="System health status checked successfully")
 
 
 @router.post("/health/refresh")
