@@ -23,8 +23,10 @@ class ExchangeException(LogicalException):
         message: str,
         error_details: Optional[Any] = None
     ):
+        from app.utils.error_parser import clean_error_message
+        cleaned_msg = clean_error_message(message)
         super().__init__(
-            message=message,
+            message=cleaned_msg,
             error_code=ErrorCode.EXCHANGE_ERROR,
             error_details=error_details
         )

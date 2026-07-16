@@ -1,6 +1,5 @@
 from typing import Any, Optional
 from app.exceptions.error_code import ErrorCode
-from app.utils.error_parser import clean_error_message
 
 class ErrorException(Exception):
     """
@@ -12,8 +11,7 @@ class ErrorException(Exception):
         message: str,
         error_details: Optional[Any] = None
     ):
-        cleaned_msg = clean_error_message(message)
-        super().__init__(cleaned_msg)
+        super().__init__(message)
         self.error_code = error_code
-        self.message = cleaned_msg
+        self.message = message
         self.error_details = error_details

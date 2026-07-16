@@ -54,14 +54,12 @@ if settings.ENABLE_IP_WHITELIST:
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    from app.utils.error_parser import clean_error_message
-    cleaned_detail = clean_error_message(exc.detail)
     if 400 <= exc.status_code < 500:
-        logger.warning(f"HTTP client exception: {cleaned_detail} (Status: {exc.status_code})")
+        logger.warning(f"HTTP client exception: {exc.detail} (Status: {exc.status_code})")
     else:
-        logger.error(f"HTTP server exception: {cleaned_detail} (Status: {exc.status_code})")
+        logger.error(f"HTTP server exception: {exc.detail} (Status: {exc.status_code})")
     return error_response(
-        message=cleaned_detail,
+        message=exc.detail,
         status_code=exc.status_code
     )
 
