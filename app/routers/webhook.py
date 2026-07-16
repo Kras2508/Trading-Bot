@@ -132,8 +132,8 @@ async def tradingview_webhook(
         )
         
         if not order_result["success"]:
-            error_msg = f"Failed to place order: {order_result.get('error')}"
-            logger.error(error_msg)
+            error_msg = order_result.get("error")
+            logger.error(f"Failed to place order: {error_msg}")
             
             # Log error
             activity_log_service.log_activity(

@@ -97,8 +97,8 @@ async def place_order_direct(
         )
         
         if not order_result["success"]:
-            error_msg = f"Failed to place order: {order_result.get('error')}"
-            logger.error(error_msg)
+            error_msg = order_result.get("error")
+            logger.error(f"Failed to place order: {error_msg}")
             
             # Log error
             activity_log_service.log_activity(
@@ -386,7 +386,7 @@ async def cancel_order(
         cancel_result = trading_service.cancel_order(config, order)
         if not cancel_result["success"]:
             raise ExchangeException(
-                message=f"Failed to cancel order: {cancel_result.get('error')}",
+                message=cancel_result.get("error"),
                 error_details=cancel_result
             )
 
@@ -447,7 +447,7 @@ async def get_symbols(
         
         if not result["success"]:
             raise ExchangeException(
-                message=f"Failed to fetch symbols: {result.get('error')}",
+                message=result.get("error"),
                 error_details=result
             )
         
@@ -502,7 +502,7 @@ async def check_order_status(
         
         if not status_result["success"]:
             raise ExchangeException(
-                message=f"Failed to check order status: {status_result.get('error')}",
+                message=status_result.get("error"),
                 error_details=status_result
             )
         
@@ -580,7 +580,7 @@ async def refresh_pnl(
         
         if not pnl_result["success"]:
             raise ExchangeException(
-                message=f"Failed to get PnL from exchange: {pnl_result.get('error')}",
+                message=pnl_result.get("error"),
                 error_details=pnl_result
             )
         
@@ -760,8 +760,8 @@ async def place_order_pine_script(
         )
         
         if not order_result["success"]:
-            error_msg = f"Failed to place order: {order_result.get('error')}"
-            logger.error(error_msg)
+            error_msg = order_result.get("error")
+            logger.error(f"Failed to place order: {error_msg}")
             
             # Log error
             activity_log_service.log_activity(

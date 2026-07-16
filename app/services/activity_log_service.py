@@ -22,26 +22,12 @@ class ActivityLogService:
     ):
         """Log an activity"""
         try:
-            from app.utils.error_parser import clean_error_message
-            cleaned_message = clean_error_message(message)
-            
-            # Lưu lại thông tin lỗi thô ban đầu (kèm code lỗi) vào details nếu message bị thay đổi
-            if cleaned_message != message:
-                if details is None:
-                    details = {}
-                elif isinstance(details, dict):
-                    details = dict(details)
-                else:
-                    details = {"original_details": details}
-                
-                details["raw_error"] = message
-
             log_entry = ActivityLog(
                 bot_config_id=bot_config_id,
                 order_id=order_id,
                 level=level,
                 category=category,
-                message=cleaned_message,
+                message=message,
                 details=details,
                 source_ip=source_ip
             )
