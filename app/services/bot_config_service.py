@@ -1,7 +1,7 @@
 import re
 from typing import Any, Dict, Iterable, Optional
 
-from fastapi import HTTPException
+from app.exceptions.logical_exception import BadRequestException
 
 
 ALLOWED_EXCHANGES = {
@@ -23,14 +23,14 @@ SYMBOL_PATTERN = re.compile(r"^[A-Za-z0-9]+(\/[A-Za-z0-9]+)?(\.D)?$")
 def _normalize_symbol(symbol: str) -> str:
     normalized = symbol.strip().upper()
     if not SYMBOL_PATTERN.match(normalized):
-        raise HTTPException(status_code=400, detail="Symbol format is invalid")
+        raise BadRequestException(message="Symbol format is invalid")
     return normalized
 
 
 def _normalize_exchange(exchange: str) -> str:
     normalized = exchange.strip().lower()
     if normalized not in ALLOWED_EXCHANGES:
-        raise HTTPException(status_code=400, detail="Exchange is not supported")
+        raise BadRequestException(message="Exchange is not supported")
     return normalized
 
 
@@ -38,7 +38,7 @@ def _validate_non_negative(value: Optional[float], field_name: str) -> None:
     if value is None:
         return
     if value < 0:
-        raise HTTPException(status_code=400, detail=f"{field_name} must be greater than or equal to 0")
+        raise BadRequestException(message=f"{field_name} must be greater than or equal to 0")
 
 
 def _normalize_tp_levels(tp_levels: Optional[Iterable[Any]]) -> Optional[list]:
@@ -60,15 +60,15 @@ def _normalize_tp_levels(tp_levels: Optional[Iterable[Any]]) -> Optional[list]:
         close_percent = float(data.get("close_percent", 0))
 
         if percent < 0:
-            raise HTTPException(status_code=400, detail="TP percent must be greater than or equal to 0")
+            raise BadRequestException(message="TP percent must be greater than or equal to 0")
         if close_percent < 0:
-            raise HTTPException(status_code=400, detail="TP close_percent must be greater than or equal to 0")
+            raise BadRequestException(message="TP close_percent must be greater than or equal to 0")
 
         total_close += close_percent
         normalized.append({"percent": percent, "close_percent": close_percent})
 
     if total_close > 100:
-        raise HTTPException(status_code=400, detail="Total close_percent in tp_levels cannot exceed 100")
+        raise BadRequestException(message="Total close_percent in tp_levels cannot exceed 100")
 
     return normalized
 
@@ -83,14 +83,14 @@ def _validate_trailing(enable_trailing: bool,
 
     if trailing_type == "percent":
         if trailing_percent is None or trailing_percent <= 0:
-            raise HTTPException(status_code=400, detail="Trailing percent must be greater than 0")
+            raise BadRequestException(message="Trailing percent must be greater than 0")
     elif trailing_type == "atr":
         if trailing_atr_multiplier is None or trailing_atr_multiplier <= 0:
-            raise HTTPException(status_code=400, detail="ATR multiplier must be greater than 0")
+            raise BadRequestException(message="ATR multiplier must be greater than 0")
         if trailing_atr_period is None or trailing_atr_period < 1:
-            raise HTTPException(status_code=400, detail="ATR period must be at least 1")
+            raise BadRequestException(message="ATR period must be at least 1")
     else:
-        raise HTTPException(status_code=400, detail="Trailing type is invalid")
+        raise BadRequestException(message="Trailing type is invalid")
 
 
 def validate_create_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -111,7 +111,7 @@ def validate_create_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     trading_mode = normalized.get("trading_mode")
     leverage = normalized.get("leverage")
     if trading_mode == "spot" and leverage != 1:
-        raise HTTPException(status_code=400, detail="Leverage must be 1 for spot trading")
+        raise BadRequestException(message="Leverage must be 1 for spot trading")
 
     _validate_trailing(
         normalized.get("enable_trailing", False),
@@ -145,7 +145,7 @@ def validate_update_payload(update_data: Dict[str, Any], config: Any) -> Dict[st
     trading_mode = normalized.get("trading_mode", config.trading_mode)
     leverage = normalized.get("leverage", config.leverage)
     if trading_mode == "spot" and leverage != 1:
-        raise HTTPException(status_code=400, detail="Leverage must be 1 for spot trading")
+        raise BadRequestException(message="Leverage must be 1 for spot trading")
 
     enable_trailing = normalized.get("enable_trailing", config.enable_trailing)
     _validate_trailing(

@@ -206,7 +206,7 @@ async def get_order(
                 order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return order
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Error fetching order {order_id}: {e}", exc_info=True)
