@@ -1,8 +1,9 @@
-from fastapi import Request, status
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.security import check_ip_whitelist
 from app.core.config import settings
 from app.utils.response import error_response
+from app.exceptions.error_code import ErrorCode
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
                 logger.warning(f"IP {client_ip} not in whitelist")
                 return error_response(
                     message="IP address not allowed",
-                    status_code=status.HTTP_403_FORBIDDEN
+                    status_code=ErrorCode.FORBIDDEN.status_code,
+                    error_code=ErrorCode.FORBIDDEN.code
                 )
         
         response = await call_next(request)
