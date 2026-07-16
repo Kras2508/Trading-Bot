@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -9,6 +9,9 @@ from app.schemas.bot_config import BotConfigCreate, BotConfigUpdate, BotConfigRe
 from app.core.security import verify_token, encrypt_data
 from app.services.activity_log_service import activity_log_service
 from app.services.bot_config_service import validate_create_payload, validate_update_payload
+from app.exceptions.error_code import ErrorCode
+from app.exceptions.error_exception import ErrorException
+from app.exceptions.logical_exception import NotFoundException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,7 +30,7 @@ async def create_config(
     from app.models.user import User
     user = db.query(User).filter(User.username == username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundException(message="User not found")
 
     validated_data = validate_create_payload(config_data.model_dump())
     
@@ -40,9 +43,9 @@ async def create_config(
             api_secret_encrypted = encrypt_data(config_data.api_secret)
         except Exception as e:
             logger.error(f"Failed to encrypt API credentials: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to encrypt API credentials"
+            raise ErrorException(
+                error_code=ErrorCode.UNDEFINED_ERROR,
+                message="Failed to encrypt API credentials"
             )
     
     # Create config
@@ -114,19 +117,19 @@ async def list_configs(
 
         if config_ids:
             statuses = db.query(BotStatus).filter(BotStatus.bot_config_id.in_(config_ids)).all()
-            status_map = {status.bot_config_id: status for status in statuses}
+            status_map = {s.bot_config_id: s for s in statuses}
 
             for config in configs:
-                status = status_map.get(config.id)
-                config.is_paused = status.is_paused if status else False
+                bot_status_item = status_map.get(config.id)
+                config.is_paused = bot_status_item.is_paused if bot_status_item else False
 
         logger.info(f"Found {len(configs)} configs for user {username}")
         return configs
     except Exception as e:
         logger.error(f"Error listing configs: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch configs: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Failed to fetch configs: {str(e)}"
         )
 
 
@@ -139,7 +142,7 @@ async def get_config(
     """Get a specific bot configuration"""
     config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
     if not config:
-        raise HTTPException(status_code=404, detail="Configuration not found")
+        raise NotFoundException(message="Configuration not found")
 
     status = db.query(BotStatus).filter(BotStatus.bot_config_id == config_id).first()
     config.is_paused = status.is_paused if status else False
@@ -156,7 +159,7 @@ async def update_config(
     """Update a bot configuration"""
     config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
     if not config:
-        raise HTTPException(status_code=404, detail="Configuration not found")
+        raise NotFoundException(message="Configuration not found")
     
     # Update fields
     update_data = config_data.dict(exclude_unset=True)
@@ -205,7 +208,7 @@ async def delete_config(
     
     config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
     if not config:
-        raise HTTPException(status_code=404, detail="Configuration not found")
+        raise NotFoundException(message="Configuration not found")
     
     # Cleanup dependent records first to avoid FK constraint errors.
     orders_query = db.query(Order).filter(Order.bot_config_id == config_id)

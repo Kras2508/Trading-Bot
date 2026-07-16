@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.utils.response import error_response
+from app.exceptions.error_exception import ErrorException
 
 from app.database import engine, Base
 from app.routers import auth, config, webhook, orders, monitoring, trading
@@ -53,20 +54,41 @@ if settings.ENABLE_IP_WHITELIST:
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    logger.error(f"HTTP exception: {exc.detail} (Status: {exc.status_code})")
+    from app.utils.error_parser import clean_error_message
+    cleaned_detail = clean_error_message(exc.detail)
+    if 400 <= exc.status_code < 500:
+        logger.warning(f"HTTP client exception: {cleaned_detail} (Status: {exc.status_code})")
+    else:
+        logger.error(f"HTTP server exception: {cleaned_detail} (Status: {exc.status_code})")
     return error_response(
-        message=exc.detail,
+        message=cleaned_detail,
         status_code=exc.status_code
     )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.error(f"Validation error: {exc.errors()}")
+    logger.warning(f"Validation error: {exc.errors()}")
     return error_response(
         message="Request validation failed",
         error_details=exc.errors(),
         status_code=422
+    )
+
+
+@app.exception_handler(ErrorException)
+async def error_exception_handler(request: Request, exc: ErrorException):
+    status_code = exc.error_code.status_code
+    if 400 <= status_code < 500:
+        logger.warning(f"Logical error ({exc.error_code.name}): {exc.message} (Code: {exc.error_code.code}, Status: {status_code})")
+    else:
+        logger.error(f"System error ({exc.error_code.name}): {exc.message} (Code: {exc.error_code.code}, Status: {status_code})")
+        
+    return error_response(
+        message=exc.message,
+        error_details=exc.error_details,
+        status_code=status_code,
+        error_code=exc.error_code.code
     )
 
 
@@ -75,7 +97,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global exception: {exc}", exc_info=True)
     return error_response(
         message="Internal server error",
-        error_details=str(exc),
+        error_details=None,
         status_code=500
     )
 

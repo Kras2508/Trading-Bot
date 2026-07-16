@@ -1,21 +1,28 @@
-# Hướng dẫn Chuẩn hóa API Response & Luồng Xử lý Exception
+# Hướng dẫn Chuẩn hóa API Response & Luồng Xử lý Exception/Logs
 
-Tài liệu này tóm tắt các thay đổi đã thực hiện và hướng dẫn cách sử dụng cấu trúc chuẩn hóa phản hồi (API Response) mới cho các nhà phát triển trong dự án.
+Dự án sử dụng một hệ thống quản lý lỗi ngoại lệ hướng đối tượng (OOP) thống nhất và bộ làm sạch lỗi tự động, tương thích hoàn toàn với cấu trúc Frontend và chuẩn thiết kế RESTful.
 
 ---
 
-## 📝 Danh sách các Tệp thay đổi (Files changed)
+## 📝 Danh sách các Tệp thuộc Hệ thống Exception/Logs
 
-*   `[NEW]` app/utils/response.py — Khai báo các hàm helper tạo phản hồi JSON thành công và lỗi.
-*   `[MOD]` app/main.py — Đăng ký các bộ bắt lỗi toàn cục (Global Exception Handlers) để tự động chuẩn hóa lỗi.
-*   `[MOD]` app/core/middleware.py — Khắc phục lỗi ném ngoại lệ trong IPWhitelistMiddleware.
-*   `[MOD]` app/routers/monitoring.py — Triển khai thử nghiệm thành công trên endpoint `/health`.
+*   **`app/exceptions/error_code.py`**: Định nghĩa Enum mã lỗi hệ thống dạng `internal_code|http_status_code` (ví dụ: `EXCHANGE_ERROR = '100|400'`, `NOT_FOUND = '3|404'`).
+*   **`app/exceptions/error_exception.py`**: Lớp Exception cơ sở `ErrorException`. Tự động dọn dẹp và chuẩn hóa thuộc tính `message` của lỗi ngay khi khởi tạo.
+*   **`app/exceptions/logical_exception.py`**: Khai báo các lớp con chuyên biệt kế thừa từ `ErrorException`:
+    *   `NotFoundException` (HTTP 404 - Không tìm thấy tài nguyên)
+    *   `UnauthorizedException` (HTTP 401 - Chưa xác thực)
+    *   `ForbiddenException` (HTTP 403 - Bị cấm truy cập)
+    *   `BadRequestException` (HTTP 400 - Yêu cầu không hợp lệ)
+    *   `ValidationException` (HTTP 422 - Lỗi dữ liệu đầu vào)
+    *   `ExchangeException` (HTTP 400 - Lỗi phát sinh từ sàn giao dịch, mã lỗi nội bộ 100)
+*   **`app/utils/error_parser.py`**: Bộ tiện ích Regex & JSON dọn dẹp các thông điệp JSON thô từ CCXT/Binance và de-duplicate các tiền tố lồng ghép phức tạp.
+*   **`app/utils/response.py`**: Khai báo helper tạo phản hồi JSON thành công (`success_response`) và lỗi (`error_response`).
+*   **`app/services/activity_log_service.py`**: Dịch vụ ghi log tự động dọn dẹp thông điệp ghi vào DB, đồng thời lưu giữ lỗi thô chứa mã lỗi kỹ thuật ban đầu dưới khóa `raw_error` trong cột `details`.
+*   **`app/main.py`**: Đăng ký bộ xử lý lỗi ngoại lệ toàn cục cho `ErrorException`, phân loại mức độ ghi log (Warning cho 4xx, Error cho 5xx).
 
 ---
 
 ## 💡 Cấu trúc Phản hồi Chuẩn (API Response Format)
-
-Toàn bộ các phản hồi từ API của hệ thống giờ đây được thống nhất theo cấu trúc sau:
 
 ### 1. Phản hồi Thành công (Success Response) - Mã HTTP 200/201
 ```json
@@ -30,39 +37,59 @@ Toàn bộ các phản hồi từ API của hệ thống giờ đây được th
 ```json
 {
   "success": false,
-  "message": "Thông điệp thông báo lỗi",
-  "errors": { ... } // Chi tiết lỗi (Object, List hoặc Null)
+  "message": "Thông điệp lỗi đã được làm sạch để hiển thị cho người dùng",
+  "code": 100, // Mã lỗi hệ thống nội bộ (Mặc định: 0, ExchangeException: 100)
+  "detail": "Thông điệp lỗi đã được làm sạch (Trường này dùng để tương thích ngược với Axios parse)"
 }
 ```
 
 ---
 
-## 🛠️ Hướng dẫn Sử dụng cho Developer
+## 🛠️ Hướng dẫn Sử dụng cho Nhà phát triển (Developer Guide)
 
 ### 1. Trả về Response thành công trong Router
-Khi viết endpoint mới, hãy import `success_response` và sử dụng như sau:
-
+Khi viết endpoint mới, hãy sử dụng `success_response`:
 ```python
 from app.utils.response import success_response
 
 @router.get("/your-endpoint")
 async def your_route_handler():
-    data = {"example_key": "example_value"}
+    data = {"key": "value"}
     return success_response(data=data, message="Lấy dữ liệu thành công")
 ```
-*Lưu ý:* `success_response` đã được bọc `jsonable_encoder` bên trong, vì vậy bạn có thể truyền trực tiếp đối tượng phức tạp như kiểu dữ liệu `datetime` hoặc đối tượng cơ sở dữ liệu SQLAlchemy mà không lo bị lỗi serialize.
 
-### 2. Trả về Response lỗi
-Đối với các lỗi xảy ra trong quá trình xử lý logic ở Router hoặc Service:
-*   **Trong Router/Service:** Chỉ cần ném lỗi qua `HTTPException` như bình thường.
-    ```python
-    from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="Không tìm thấy bot cấu hình")
-    ```
-    Hệ thống bắt lỗi toàn cục (`app/main.py`) sẽ **tự động** bắt lấy ngoại lệ này và chuyển đổi sang định dạng JSON lỗi chuẩn hóa (`{"success": false, "message": "...", "errors": null}`).
+### 2. Ném lỗi ngoại lệ trong Router / Service
+**TUYỆT ĐỐI KHÔNG** sử dụng `raise HTTPException(...)` thô trong router. Hãy sử dụng các lớp ngoại lệ chuyên biệt:
 
-*   **Trong Middleware:** Nếu bạn viết Middleware mới, do không thể sử dụng `raise HTTPException` (Starlette không bắt được lỗi từ middleware qua handler), hãy import `error_response` và `return` trực tiếp:
-    ```python
-    from app.utils.response import error_response
-    return error_response(message="Không có quyền truy cập", status_code=403)
-    ```
+```python
+from app.exceptions.logical_exception import NotFoundException, BadRequestException, ExchangeException
+
+# 1. Lỗi không tìm thấy tài nguyên (HTTP 404)
+raise NotFoundException(message="Không tìm thấy bot cấu hình")
+
+# 2. Lỗi do yêu cầu không hợp lệ (HTTP 400)
+raise BadRequestException(message="Bot hiện đang tạm dừng")
+
+# 3. Lỗi do Binance / CCXT (HTTP 400, code: 100)
+# Truyền thêm dữ liệu thô nhận được từ sàn vào error_details để hỗ trợ lưu log kỹ thuật
+raise ExchangeException(
+    message=f"Failed to place order: {result.get('error')}",
+    error_details=result
+)
+```
+
+### 3. Ghi nhận nhật ký lỗi hoạt động (Activity Logs)
+Khi bắt lỗi và ghi nhận nhật ký hoạt động vào database:
+*   Trường `message` của log ghi DB sẽ tự động được lọc sạch, ví dụ: `binance: Invalid Api-Key ID.`
+*   Khi người dùng click vào xem **Chi tiết (Details)** của dòng log trên giao diện Web UI, phần chi tiết mở rộng (inline row expansion) sẽ tự động hiển thị dữ liệu thô bao gồm cả `"raw_error"` chứa mã lỗi kỹ thuật ban đầu (`"code": -2008` của Binance) nhờ cơ chế lưu trữ tự động của `log_activity`.
+
+```python
+# Hệ thống sẽ tự động dọn dẹp message và lưu vết lỗi thô nguyên bản vào details
+activity_log_service.log_activity(
+    db=db,
+    level="error",
+    category="trading",
+    message=error_msg,
+    details=order_result # Chứa thông tin JSON lỗi gốc từ sàn giao dịch
+)
+```

@@ -10,6 +10,10 @@ from app.models.order import Order
 from app.schemas.order import OrderResponse, OrderHistoryFilter, OrderUpdate
 from app.core.security import verify_token
 from app.services.activity_log_service import activity_log_service
+from app.exceptions.error_code import ErrorCode
+from app.exceptions.error_exception import ErrorException
+from app.exceptions.logical_exception import NotFoundException, BadRequestException
+import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -85,9 +89,9 @@ async def get_order_history(
         return orders
     except Exception as e:
         logger.error(f"Error fetching order history: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -162,9 +166,9 @@ async def get_completed_orders(
         return orders
     except Exception as e:
         logger.error(f"Error fetching completed orders: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -178,7 +182,7 @@ async def get_order(
     try:
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise NotFoundException(message="Order not found")
         
         # Ensure tp_levels is always a list and add bot_config_name
         if order.tp_levels is None:
@@ -206,9 +210,9 @@ async def get_order(
         raise
     except Exception as e:
         logger.error(f"Error fetching order {order_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -222,36 +226,36 @@ async def update_order(
     """Update a pending limit order"""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise NotFoundException(message="Order not found")
 
     order_status = (order.status or "").lower()
     order_type = (order.order_type or "").lower()
 
     if order_status in ["filled", "closed", "cancelled", "error"]:
-        raise HTTPException(status_code=400, detail="Order status does not allow editing")
+        raise BadRequestException(message="Order status does not allow editing")
 
     if order_status != "pending" or order_type != "limit":
-        raise HTTPException(status_code=400, detail="Only pending limit orders can be edited")
+        raise BadRequestException(message="Only pending limit orders can be edited")
 
     update_data = order_data.dict(exclude_unset=True)
     if not update_data:
-        raise HTTPException(status_code=400, detail="No fields provided for update")
+        raise BadRequestException(message="No fields provided for update")
 
     if "amount" in update_data and update_data["amount"] <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be greater than 0")
+        raise BadRequestException(message="Amount must be greater than 0")
     if "price" in update_data and update_data["price"] <= 0:
-        raise HTTPException(status_code=400, detail="Price must be greater than 0")
+        raise BadRequestException(message="Price must be greater than 0")
     if "stop_loss_price" in update_data and update_data["stop_loss_price"] < 0:
-        raise HTTPException(status_code=400, detail="Stop loss must be greater than or equal to 0")
+        raise BadRequestException(message="Stop loss must be greater than or equal to 0")
     if "take_profit_price" in update_data and update_data["take_profit_price"] < 0:
-        raise HTTPException(status_code=400, detail="Take profit must be greater than or equal to 0")
+        raise BadRequestException(message="Take profit must be greater than or equal to 0")
 
     if "tp_levels" in update_data:
         tp_levels = update_data["tp_levels"]
         if tp_levels is None:
             update_data["tp_levels"] = []
         elif not isinstance(tp_levels, list):
-            raise HTTPException(status_code=400, detail="TP levels must be a list")
+            raise BadRequestException(message="TP levels must be a list")
 
     changes = {}
     for field, value in update_data.items():
@@ -261,7 +265,7 @@ async def update_order(
             setattr(order, field, value)
 
     if not changes:
-        raise HTTPException(status_code=400, detail="No changes detected")
+        raise BadRequestException(message="No changes detected")
 
     db.commit()
     db.refresh(order)
@@ -315,7 +319,7 @@ async def list_orders(
         return orders
     except Exception as e:
         logger.error(f"Error listing orders: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )

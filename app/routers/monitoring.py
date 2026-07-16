@@ -14,6 +14,7 @@ from app.core.security import verify_token
 from app.services.telegram_service import telegram_service
 from app.services.health_check_service import HealthCheckService
 from app.utils.response import success_response
+from app.exceptions.logical_exception import NotFoundException, BadRequestException
 
 router = APIRouter()
 
@@ -92,14 +93,14 @@ async def get_bot_status(
     ).first()
     
     if not bot_status:
-        raise HTTPException(status_code=404, detail="Bot status not found")
+        raise NotFoundException(message="Bot status not found")
     
     bot_config = db.query(BotConfig).filter(
         BotConfig.id == bot_config_id
     ).first()
     
     if not bot_config:
-        raise HTTPException(status_code=404, detail="Bot config not found")
+        raise NotFoundException(message="Bot config not found")
     
     return format_bot_status(bot_status, bot_config)
 
@@ -116,14 +117,14 @@ async def pause_bot(
     ).first()
     
     if not bot_status:
-        raise HTTPException(status_code=404, detail="Bot status not found")
+        raise NotFoundException(message="Bot status not found")
     
     bot_config = db.query(BotConfig).filter(
         BotConfig.id == bot_config_id
     ).first()
     
     if not bot_config:
-        raise HTTPException(status_code=404, detail="Bot config not found")
+        raise NotFoundException(message="Bot config not found")
     
     bot_status.is_paused = True
     bot_status.is_running = False
@@ -151,17 +152,17 @@ async def resume_bot(
     ).first()
     
     if not bot_status:
-        raise HTTPException(status_code=404, detail="Bot status not found")
+        raise NotFoundException(message="Bot status not found")
     
     bot_config = db.query(BotConfig).filter(
         BotConfig.id == bot_config_id
     ).first()
     
     if not bot_config:
-        raise HTTPException(status_code=404, detail="Bot config not found")
+        raise NotFoundException(message="Bot config not found")
     
     if not bot_config.is_active:
-        raise HTTPException(status_code=400, detail="Cannot resume inactive bot")
+        raise BadRequestException(message="Cannot resume inactive bot")
     
     bot_status.is_paused = False
     bot_status.is_running = True

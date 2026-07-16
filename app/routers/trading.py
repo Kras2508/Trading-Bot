@@ -14,6 +14,9 @@ from app.services.trading_service import trading_service
 from app.services.activity_log_service import activity_log_service
 from app.services.telegram_service import telegram_service
 from app.core.security import verify_token, check_ip_whitelist
+from app.exceptions.error_code import ErrorCode
+from app.exceptions.error_exception import ErrorException
+from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -43,9 +46,8 @@ async def place_order_direct(
         ).first()
         
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Bot config {request.bot_config_id} not found or inactive"
+            raise NotFoundException(
+                message=f"Bot config {request.bot_config_id} not found or inactive"
             )
         
         # Check if bot is paused
@@ -54,25 +56,22 @@ async def place_order_direct(
         ).first()
         
         if bot_status and bot_status.is_paused:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Bot {config.name} is paused"
+            raise BadRequestException(
+                message=f"Bot {config.name} is paused"
             )
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Bot config missing API credentials. Please add API key and secret."
+            raise BadRequestException(
+                message="Bot config missing API credentials. Please add API key and secret."
             )
         
         # Use provided amount or config amount (if amount is 0 or None, use config amount)
         amount = request.amount if request.amount and request.amount > 0 else config.amount
         
         if not amount or amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Amount must be greater than 0. Please provide amount in request or configure it in bot config."
+            raise BadRequestException(
+                message="Amount must be greater than 0. Please provide amount in request or configure it in bot config."
             )
         
         # Use provided symbol or config symbol
@@ -83,9 +82,8 @@ async def place_order_direct(
         price = request.price if order_type == "limit" else None
         
         if order_type == "limit" and not price:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Price is required for limit orders"
+            raise BadRequestException(
+                message="Price is required for limit orders"
             )
         
         # Place order on exchange
@@ -122,9 +120,9 @@ async def place_order_direct(
             if config.enable_notifications:
                 telegram_service.send_error_alert(config.name, error_msg)
             
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error_msg
+            raise ExchangeException(
+                message=error_msg,
+                error_details=order_result
             )
         
         # Get order data
@@ -229,7 +227,7 @@ async def place_order_direct(
             "order_status": db_order.status
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Place order error: {e}", exc_info=True)
@@ -240,9 +238,9 @@ async def place_order_direct(
             message=f"Place order error: {str(e)}",
             details={"request": request.dict()}
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -259,33 +257,30 @@ async def close_order(
         # Get order
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Order {order_id} not found"
+            raise NotFoundException(
+                message=f"Order {order_id} not found"
             )
         
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Bot config not found"
+            raise NotFoundException(
+                message="Bot config not found"
             )
         
         # Check if order is already closed
         if order.status in ["cancelled", "closed"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order {order_id} is already {order.status}"
+            raise BadRequestException(
+                message=f"Order {order_id} is already {order.status}"
             )
         
         # Close position
         close_result = trading_service.close_position(config, order)
         
         if not close_result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to close order: {close_result.get('error')}"
+            raise ExchangeException(
+                message=f"Failed to close order: {close_result.get('error')}",
+                error_details=close_result
             )
         
         # Get PnL from exchange (Cách 2: Lấy từ sàn và lưu vào DB)
@@ -348,13 +343,13 @@ async def close_order(
             "close_price": close_price
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Close order error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -368,35 +363,31 @@ async def cancel_order(
     try:
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Order {order_id} not found"
+            raise NotFoundException(
+                message=f"Order {order_id} not found"
             )
 
         if order.status != "pending":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Order {order_id} is not pending"
+            raise BadRequestException(
+                message=f"Order {order_id} is not pending"
             )
 
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Bot config not found"
+            raise NotFoundException(
+                message="Bot config not found"
             )
 
         if not order.exchange_order_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Order does not have exchange order ID"
+            raise BadRequestException(
+                message="Order does not have exchange order ID"
             )
 
         cancel_result = trading_service.cancel_order(config, order)
         if not cancel_result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to cancel order: {cancel_result.get('error')}"
+            raise ExchangeException(
+                message=f"Failed to cancel order: {cancel_result.get('error')}",
+                error_details=cancel_result
             )
 
         order.status = "cancelled"
@@ -418,13 +409,13 @@ async def cancel_order(
             "order_id": order_id,
             "exchange_order": cancel_result.get("order")
         }
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Cancel order error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -441,25 +432,23 @@ async def get_symbols(
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Bot config {config_id} not found"
+            raise NotFoundException(
+                message=f"Bot config {config_id} not found"
             )
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Bot config missing API credentials. Cannot fetch symbols."
+            raise BadRequestException(
+                message="Bot config missing API credentials. Cannot fetch symbols."
             )
         
         # Get symbols from exchange
         result = trading_service.get_symbols(config)
         
         if not result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to fetch symbols: {result.get('error')}"
+            raise ExchangeException(
+                message=f"Failed to fetch symbols: {result.get('error')}",
+                error_details=result
             )
         
         return {
@@ -469,13 +458,13 @@ async def get_symbols(
             "trading_mode": config.trading_mode
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Get symbols error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -492,32 +481,29 @@ async def check_order_status(
         # Get order
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Order {order_id} not found"
+            raise NotFoundException(
+                message=f"Order {order_id} not found"
             )
         
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Bot config not found"
+            raise NotFoundException(
+                message="Bot config not found"
             )
         
         if not order.exchange_order_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Order does not have exchange order ID"
+            raise BadRequestException(
+                message="Order does not have exchange order ID"
             )
         
         # Check order status on exchange
         status_result = trading_service.check_order_status(config, order.exchange_order_id)
         
         if not status_result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to check order status: {status_result.get('error')}"
+            raise ExchangeException(
+                message=f"Failed to check order status: {status_result.get('error')}",
+                error_details=status_result
             )
         
         # Update order in DB if status changed
@@ -536,13 +522,13 @@ async def check_order_status(
             "order_data": status_result.get("order")
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Check order error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -564,24 +550,21 @@ async def refresh_pnl(
         # Get order
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Order {order_id} not found"
+            raise NotFoundException(
+                message=f"Order {order_id} not found"
             )
         
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Bot config not found"
+            raise NotFoundException(
+                message="Bot config not found"
             )
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Bot config missing API credentials"
+            raise BadRequestException(
+                message="Bot config missing API credentials"
             )
         
         # Get PnL from exchange
@@ -596,9 +579,9 @@ async def refresh_pnl(
             pnl_result = trading_service.get_pnl_from_exchange(config, order)
         
         if not pnl_result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to get PnL from exchange: {pnl_result.get('error')}"
+            raise ExchangeException(
+                message=f"Failed to get PnL from exchange: {pnl_result.get('error')}",
+                error_details=pnl_result
             )
         
         # Update PnL in database
@@ -648,13 +631,13 @@ async def refresh_pnl(
             "order_status": order.status
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Refresh PnL error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 
 
@@ -689,10 +672,7 @@ async def place_order_pine_script(
     
     if not check_ip_whitelist(client_ip):
         logger.warning(f"Pine Script API request from unauthorized IP: {client_ip}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="IP address not allowed"
-        )
+        raise ForbiddenException(message="IP address not allowed")
     
     # Log và parse request body
     try:
@@ -707,20 +687,18 @@ async def place_order_pine_script(
             # If not JSON, might be plain text - try to parse as key=value format
             logger.warning(f"Request body is not valid JSON, attempting to parse as plain text: {body_str}")
             # If it's plain text, return error with helpful message
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid JSON format. Expected JSON, got: {body_str[:100]}"
+            raise ValidationException(
+                message=f"Invalid JSON format. Expected JSON, got: {body_str[:100]}"
             )
         
         # Validate request using Pydantic
         request = PlaceOrderRequest(**body_json)
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Error parsing request body: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid request format: {str(e)}"
+        raise ValidationException(
+            message=f"Invalid request format: {str(e)}"
         )
     
     try:
@@ -731,9 +709,8 @@ async def place_order_pine_script(
         ).first()
         
         if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Bot config {request.bot_config_id} not found or inactive"
+            raise NotFoundException(
+                message=f"Bot config {request.bot_config_id} not found or inactive"
             )
         
         # Check if bot is paused
@@ -742,25 +719,22 @@ async def place_order_pine_script(
         ).first()
         
         if bot_status and bot_status.is_paused:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Bot {config.name} is paused"
+            raise BadRequestException(
+                message=f"Bot {config.name} is paused"
             )
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Bot config missing API credentials. Please add API key and secret."
+            raise BadRequestException(
+                message="Bot config missing API credentials. Please add API key and secret."
             )
         
         # Use provided amount or config amount (if amount is 0 or None, use config amount)
         amount = request.amount if request.amount and request.amount > 0 else config.amount
         
         if not amount or amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Amount must be greater than 0. Please provide amount in request or configure it in bot config."
+            raise BadRequestException(
+                message="Amount must be greater than 0. Please provide amount in request or configure it in bot config."
             )
         
         # Use provided symbol or config symbol
@@ -771,9 +745,8 @@ async def place_order_pine_script(
         price = request.price if order_type == "limit" else None
         
         if order_type == "limit" and not price:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Price is required for limit orders"
+            raise BadRequestException(
+                message="Price is required for limit orders"
             )
         
         # Place order on exchange
@@ -810,9 +783,9 @@ async def place_order_pine_script(
             if config.enable_notifications:
                 telegram_service.send_error_alert(config.name, error_msg)
             
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error_msg
+            raise ExchangeException(
+                message=error_msg,
+                error_details=order_result
             )
         
         # Get order data
@@ -933,7 +906,7 @@ async def place_order_pine_script(
             "order_status": db_order.status
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Pine Script place order error: {e}", exc_info=True)
@@ -944,8 +917,8 @@ async def place_order_pine_script(
             message=f"Pine Script place order error: {str(e)}",
             details={"request": request.dict()}
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 

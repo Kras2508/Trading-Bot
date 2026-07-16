@@ -16,15 +16,25 @@ def success_response(data: Any = None, message: str = "Success", status_code: in
         }
     )
 
-def error_response(message: str = "Error", error_details: Any = None, status_code: int = status.HTTP_400_BAD_REQUEST):
+def error_response(
+    message: str = "Error", 
+    error_details: Any = None, 
+    status_code: int = status.HTTP_400_BAD_REQUEST,
+    error_code: Optional[int] = None
+):
     """
     Tạo response JSON chuẩn hóa cho lỗi
     """
+    content = {
+        "success": False,
+        "message": message,
+        "detail": message,  # Thêm detail để tương thích với Axios parsing ở frontend
+        "errors": jsonable_encoder(error_details)
+    }
+    if error_code is not None:
+        content["code"] = error_code
+        
     return JSONResponse(
         status_code=status_code,
-        content={
-            "success": False,
-            "message": message,
-            "errors": jsonable_encoder(error_details)
-        }
+        content=content
     )
