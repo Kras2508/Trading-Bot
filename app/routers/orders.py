@@ -87,6 +87,8 @@ async def get_order_history(
                     order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return orders
+    except (HTTPException, ErrorException):
+        raise
     except Exception as e:
         logger.error(f"Error fetching order history: {e}", exc_info=True)
         raise ErrorException(
@@ -164,6 +166,8 @@ async def get_completed_orders(
                     order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return orders
+    except (HTTPException, ErrorException):
+        raise
     except Exception as e:
         logger.error(f"Error fetching completed orders: {e}", exc_info=True)
         raise ErrorException(
@@ -317,6 +321,8 @@ async def list_orders(
                     order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return orders
+    except (HTTPException, ErrorException):
+        raise
     except Exception as e:
         logger.error(f"Error listing orders: {e}", exc_info=True)
         raise ErrorException(
