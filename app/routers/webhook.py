@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 from typing import Dict, Optional
 import logging
@@ -274,7 +274,7 @@ async def tradingview_webhook(
             "trailing_enabled": config.enable_trailing
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Webhook error: {e}", exc_info=True)
