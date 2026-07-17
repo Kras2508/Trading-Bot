@@ -1,8 +1,13 @@
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 import logging
+
+from app.utils.response import error_response
+from app.exceptions.error_exception import ErrorException
 
 from app.database import engine, Base
 from app.routers import auth, config, webhook, orders, monitoring, trading
@@ -47,12 +52,51 @@ if settings.ENABLE_IP_WHITELIST:
     app.add_middleware(IPWhitelistMiddleware)
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if 400 <= exc.status_code < 500:
+        logger.warning(f"HTTP client exception: {exc.detail} (Status: {exc.status_code})")
+    else:
+        logger.error(f"HTTP server exception: {exc.detail} (Status: {exc.status_code})")
+    return error_response(
+        message=exc.detail,
+        status_code=exc.status_code
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(f"Validation error: {exc.errors()}")
+    return error_response(
+        message="Request validation failed",
+        error_details=exc.errors(),
+        status_code=422
+    )
+
+
+@app.exception_handler(ErrorException)
+async def error_exception_handler(request: Request, exc: ErrorException):
+    status_code = exc.error_code.status_code
+    if 400 <= status_code < 500:
+        logger.warning(f"Logical error ({exc.error_code.name}): {exc.message} (Code: {exc.error_code.code}, Status: {status_code})")
+    else:
+        logger.error(f"System error ({exc.error_code.name}): {exc.message} (Code: {exc.error_code.code}, Status: {status_code})")
+        
+    return error_response(
+        message=exc.message,
+        error_details=exc.error_details,
+        status_code=status_code,
+        error_code=exc.error_code.code
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"}
+    return error_response(
+        message="Internal server error",
+        error_details=None,
+        status_code=500
     )
 
 

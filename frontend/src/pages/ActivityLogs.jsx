@@ -241,71 +241,111 @@ export default function ActivityLogs() {
                 </thead>
                 <tbody>
                   {logs.map((log) => (
-                    <tr key={log.id}>
-                      <td>{log.id}</td>
-                      <td>
-                        <small>{formatDateTime(log.created_at)}</small>
-                      </td>
-                      <td>
-                        <span className={`badge ${getLevelBadge(log.level)}`}>
-                          {getLevelText(log.level)}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="badge bg-secondary">
-                          {log.category}
-                        </span>
-                      </td>
-                      <td>
-                        <div
-                          style={{ maxWidth: "400px", wordBreak: "break-word" }}
-                        >
-                          {log.message}
-                        </div>
-                      </td>
-                      <td>
-                        {log.bot_config_id ? (
-                          <span className="badge bg-info">
-                            {log.bot_config_id}
+                    <React.Fragment key={log.id}>
+                      <tr>
+                        <td>{log.id}</td>
+                        <td>
+                          <small>{formatDateTime(log.created_at)}</small>
+                        </td>
+                        <td>
+                          <span className={`badge ${getLevelBadge(log.level)}`}>
+                            {getLevelText(log.level)}
                           </span>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        {log.order_id ? (
-                          <span className="badge bg-primary">
-                            {log.order_id}
+                        </td>
+                        <td>
+                          <span className="badge bg-secondary">
+                            {log.category}
                           </span>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                      <td>
-                        {log.details ? (
-                          <button
-                            className="btn btn-sm btn-outline-info"
-                            type="button"
-                            onClick={() => {
-                              const newExpanded = new Set(expandedLogs);
-                              if (newExpanded.has(log.id)) {
-                                newExpanded.delete(log.id);
-                              } else {
-                                newExpanded.add(log.id);
-                              }
-                              setExpandedLogs(newExpanded);
-                            }}
+                        </td>
+                        <td>
+                          <div
+                            style={{ maxWidth: "400px", wordBreak: "break-word" }}
                           >
-                            <i
-                              className={`bi ${expandedLogs.has(log.id) ? "bi-eye-slash" : "bi-eye"}`}
-                            ></i>{" "}
-                            {expandedLogs.has(log.id) ? "Ẩn" : "Xem"}
-                          </button>
-                        ) : (
-                          <span className="text-muted">-</span>
-                        )}
-                      </td>
-                    </tr>
+                            {log.message}
+                          </div>
+                        </td>
+                        <td>
+                          {log.bot_config_id ? (
+                            <span className="badge bg-info">
+                              {log.bot_config_id}
+                            </span>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </td>
+                        <td>
+                          {log.order_id ? (
+                            <span className="badge bg-primary">
+                              {log.order_id}
+                            </span>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </td>
+                        <td>
+                          {log.details ? (
+                            <button
+                              className="btn btn-sm btn-outline-info"
+                              type="button"
+                              onClick={() => {
+                                const newExpanded = new Set(expandedLogs);
+                                if (newExpanded.has(log.id)) {
+                                  newExpanded.delete(log.id);
+                                } else {
+                                  newExpanded.add(log.id);
+                                }
+                                setExpandedLogs(newExpanded);
+                              }}
+                            >
+                              <i
+                                className={`bi ${expandedLogs.has(log.id) ? "bi-eye-slash" : "bi-eye"}`}
+                              ></i>{" "}
+                              {expandedLogs.has(log.id) ? "Ẩn" : "Xem"}
+                            </button>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </td>
+                      </tr>
+                      {log.details && expandedLogs.has(log.id) && (
+                        <tr>
+                          <td colSpan="8" className="bg-dark p-3">
+                            <div className="card bg-dark text-light border-secondary">
+                              <div className="card-header border-secondary d-flex justify-content-between align-items-center">
+                                <h6 className="mb-0 text-info">
+                                  <i className="bi bi-code-slash me-2"></i>
+                                  Chi tiết kỹ thuật (Raw Details)
+                                </h6>
+                              </div>
+                              <div className="card-body p-0">
+                                <pre
+                                  style={{
+                                    maxHeight: "350px",
+                                    overflowY: "auto",
+                                    whiteSpace: "pre-wrap",
+                                    fontSize: "0.85em",
+                                    backgroundColor: "#1e1e1e",
+                                    color: "#39ff14",
+                                    padding: "1.2rem",
+                                    margin: 0,
+                                    fontFamily: "monospace, Courier New"
+                                  }}
+                                >
+                                  {JSON.stringify(log.details, null, 2)}
+                                </pre>
+                              </div>
+                              {log.source_ip && (
+                                <div className="card-footer border-secondary bg-dark text-muted">
+                                  <small>
+                                    <strong>IP nguồn:</strong> {log.source_ip}
+                                  </small>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -313,40 +353,6 @@ export default function ActivityLogs() {
           )}
         </div>
       </div>
-
-      {/* Details Expand */}
-      {logs.map(
-        (log) =>
-          log.details &&
-          expandedLogs.has(log.id) && (
-            <div key={`details-${log.id}`} className="mt-2 mb-3">
-              <div className="card card-body">
-                <h6>Chi tiết:</h6>
-                <pre
-                  style={{
-                    maxHeight: "300px",
-                    overflowY: "auto",
-                    whiteSpace: "pre-wrap",
-                    fontSize: "0.9em",
-                    backgroundColor: "var(--bg-secondary)",
-                    color: "var(--text-primary)",
-                    padding: "1rem",
-                    borderRadius: "4px",
-                  }}
-                >
-                  {JSON.stringify(log.details, null, 2)}
-                </pre>
-                {log.source_ip && (
-                  <div className="mt-2">
-                    <small className="text-muted">
-                      <strong>IP:</strong> {log.source_ip}
-                    </small>
-                  </div>
-                )}
-              </div>
-            </div>
-          ),
-      )}
     </div>
   );
 }

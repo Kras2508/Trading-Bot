@@ -9,6 +9,8 @@ import base64
 import hashlib
 from app.core.config import settings
 
+from app.exceptions.logical_exception import UnauthorizedException
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
@@ -42,17 +44,15 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
+            raise UnauthorizedException(
+                message="Invalid authentication credentials",
+                error_details={"headers": {"WWW-Authenticate": "Bearer"}}
             )
         return username
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+        raise UnauthorizedException(
+            message="Invalid authentication credentials",
+            error_details={"headers": {"WWW-Authenticate": "Bearer"}}
         )
 
 

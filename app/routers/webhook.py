@@ -13,6 +13,9 @@ from app.services.telegram_service import telegram_service
 from app.services.activity_log_service import activity_log_service
 from app.core.security import check_ip_whitelist
 from app.core.config import settings
+from app.exceptions.error_code import ErrorCode
+from app.exceptions.error_exception import ErrorException
+from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException, ForbiddenException
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +50,7 @@ async def tradingview_webhook(
     
     if not check_ip_whitelist(client_ip):
         logger.warning(f"Webhook request from unauthorized IP: {client_ip}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="IP address not allowed"
-        )
+        raise ForbiddenException(message="IP address not allowed")
     
     try:
         # Extract webhook data
@@ -86,10 +86,7 @@ async def tradingview_webhook(
                 message=error_msg,
                 details=payload
             )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=error_msg
-            )
+            raise NotFoundException(message=error_msg)
         
         # Check if bot is paused
         bot_status = db.query(BotStatus).filter(
@@ -101,10 +98,7 @@ async def tradingview_webhook(
             logger.warning(error_msg)
             if config.enable_notifications:
                 telegram_service.send_bot_paused_alert(config.name, "Bot is paused")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error_msg
-            )
+            raise BadRequestException(message=error_msg)
         
         # Check for duplicate orders
         if check_duplicate_order(db, config.id, symbol):
@@ -138,8 +132,8 @@ async def tradingview_webhook(
         )
         
         if not order_result["success"]:
-            error_msg = f"Failed to place order: {order_result.get('error')}"
-            logger.error(error_msg)
+            error_msg = order_result.get("error")
+            logger.error(f"Failed to place order: {error_msg}")
             
             # Log error
             activity_log_service.log_activity(
@@ -161,9 +155,9 @@ async def tradingview_webhook(
             if config.enable_notifications:
                 telegram_service.send_error_alert(config.name, error_msg)
             
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error_msg
+            raise ExchangeException(
+                message=error_msg,
+                error_details=order_result
             )
         
         # Create order record
@@ -280,7 +274,7 @@ async def tradingview_webhook(
             "trailing_enabled": config.enable_trailing
         }
     
-    except HTTPException:
+    except (HTTPException, ErrorException):
         raise
     except Exception as e:
         logger.error(f"Webhook error: {e}", exc_info=True)
@@ -291,8 +285,8 @@ async def tradingview_webhook(
             message=f"Webhook error: {str(e)}",
             details={"payload": payload}
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
+        raise ErrorException(
+            error_code=ErrorCode.UNDEFINED_ERROR,
+            message=f"Internal server error: {str(e)}"
         )
 

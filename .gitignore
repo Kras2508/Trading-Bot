@@ -30,7 +30,7 @@ wheels/
 .vscode/
 .idea/
 *.log
-
+.agents/
 # Frontend
 frontend/node_modules/
 frontend/dist/
