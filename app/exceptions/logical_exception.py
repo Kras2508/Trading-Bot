@@ -24,22 +24,14 @@ class ExchangeException(LogicalException):
         message: str,
         error_details: Optional[Any] = None
     ):
-        cleaned_message = clean_error_message(message)
-        
-        # Check if it's a timestamp error
-        error_text = (message or "").lower()
-        is_timestamp_error = (
-            "timestamp" in error_text
-            or "-1021" in error_text
-            or "recvwindow" in error_text
-        )
-        if is_timestamp_error:
-            cleaned_message = (
-                f"{cleaned_message}\n\n"
-                "💡 Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
-                "Vui lòng sync thời gian máy tính bằng script FIX_TIMESTAMP_BINANCE.bat (Run as Administrator), "
-                "sau đó restart backend và thử lại."
-            )
+        # Support optional pre-appended hints safely
+        hint = ""
+        if "\n\n💡" in message:
+            parts = message.split("\n\n💡", 1)
+            message = parts[0]
+            hint = "\n\n💡" + parts[1]
+            
+        cleaned_message = clean_error_message(message) + hint
             
         super().__init__(
             message=cleaned_message,
