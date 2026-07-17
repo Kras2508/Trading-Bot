@@ -9,6 +9,7 @@ from app.core.security import decrypt_data
 from app.models.bot_config import BotConfig
 from app.models.order import Order
 from sqlalchemy.orm import Session
+from app.utils.error_parser import clean_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +187,6 @@ class TradingService:
             
             # If we get here, all retries failed
             logger.error(f"Failed to place order after {retry_count} attempts: {last_error}")
-            from app.utils.error_parser import clean_error_message
             raw_error = str(last_error)
             cleaned_error = clean_error_message(raw_error)
             
@@ -206,7 +206,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to place order (unexpected): {e}", exc_info=True)
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -230,7 +229,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to cancel order {order.id}: {e}", exc_info=True)
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -304,7 +302,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to get symbols: {e}")
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -405,7 +402,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to place TP/SL orders: {e}", exc_info=True)
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -428,7 +424,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to check order status: {e}")
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -525,7 +520,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to close position: {e}")
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -637,7 +631,6 @@ class TradingService:
             }
         except Exception as e:
             logger.error(f"Failed to get PnL from exchange: {e}")
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -787,7 +780,6 @@ class TradingService:
             
         except Exception as e:
             logger.error(f"Failed to fetch PnL from Binance Futures API: {e}", exc_info=True)
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
@@ -864,7 +856,6 @@ class TradingService:
                 
             except Exception as e:
                 logger.error(f"Failed to fetch position history: {e}", exc_info=True)
-                from app.utils.error_parser import clean_error_message
                 raw_error = str(e)
                 cleaned_error = clean_error_message(raw_error)
                 return {
@@ -881,7 +872,6 @@ class TradingService:
             
         except Exception as e:
             logger.error(f"Error fetching position history: {e}", exc_info=True)
-            from app.utils.error_parser import clean_error_message
             raw_error = str(e)
             cleaned_error = clean_error_message(raw_error)
             return {
