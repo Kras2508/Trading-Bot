@@ -1,5 +1,6 @@
 import logging
 from sqlalchemy.orm import Session
+from fastapi.encoders import jsonable_encoder
 from app.models.activity_log import ActivityLog
 from typing import Optional, Dict
 
@@ -22,6 +23,14 @@ class ActivityLogService:
     ):
         """Log an activity"""
         try:
+            # Normalize details to JSON-compatible types using jsonable_encoder
+            if details is not None:
+                try:
+                    details = jsonable_encoder(details)
+                except Exception as enc_err:
+                    logger.warning(f"Failed to encode activity log details: {enc_err}")
+                    details = {"serialization_error": str(enc_err), "raw_details": str(details)}
+
             log_entry = ActivityLog(
                 bot_config_id=bot_config_id,
                 order_id=order_id,
@@ -39,4 +48,3 @@ class ActivityLogService:
 
 
 activity_log_service = ActivityLogService()
-
