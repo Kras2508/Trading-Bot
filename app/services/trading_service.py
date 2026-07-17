@@ -9,7 +9,6 @@ from app.core.security import decrypt_data
 from app.models.bot_config import BotConfig
 from app.models.order import Order
 from sqlalchemy.orm import Session
-from app.utils.error_parser import clean_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -188,30 +187,17 @@ class TradingService:
             # If we get here, all retries failed
             logger.error(f"Failed to place order after {retry_count} attempts: {last_error}")
             raw_error = str(last_error)
-            cleaned_error = clean_error_message(raw_error)
-            
-            # Provide helpful message for timestamp errors
-            if self._is_timestamp_error(raw_error):
-                cleaned_error = (
-                    f"{cleaned_error}\n\n"
-                    "💡 Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
-                    "Vui lòng sync thời gian máy tính bằng script FIX_TIMESTAMP_BINANCE.bat (Run as Administrator), "
-                    "sau đó restart backend và thử lại."
-                )
             
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
         except Exception as e:
             logger.error(f"Failed to place order (unexpected): {e}", exc_info=True)
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
 
     def cancel_order(self, config: BotConfig, order: Order) -> Dict:
@@ -230,11 +216,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to cancel order {order.id}: {e}", exc_info=True)
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
     
     def calculate_sl_tp_prices(
@@ -303,11 +287,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to get symbols: {e}")
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error,
+                "error": raw_error,
                 "symbols": []
             }
     
@@ -403,11 +385,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to place TP/SL orders: {e}", exc_info=True)
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
     
     def check_order_status(self, config: BotConfig, exchange_order_id: str) -> Dict:
@@ -425,11 +405,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to check order status: {e}")
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
     
     def close_position(self, config: BotConfig, order: Order) -> Dict:
@@ -521,11 +499,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to close position: {e}")
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
 
 
@@ -632,11 +608,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to get PnL from exchange: {e}")
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
 
     def _binance_futures_signature(self, params: dict, secret: str) -> str:
@@ -781,11 +755,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Failed to fetch PnL from Binance Futures API: {e}", exc_info=True)
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
 
     def fetch_position_history(self, config: BotConfig, symbol: Optional[str] = None, limit: int = 100) -> Dict:
@@ -857,11 +829,9 @@ class TradingService:
             except Exception as e:
                 logger.error(f"Failed to fetch position history: {e}", exc_info=True)
                 raw_error = str(e)
-                cleaned_error = clean_error_message(raw_error)
                 return {
                     "success": False,
-                    "error": f"Không thể lấy lịch sử vị thế: {cleaned_error}",
-                    "raw_error": raw_error
+                    "error": f"Không thể lấy lịch sử vị thế: {raw_error}"
                 }
             
             return {
@@ -873,11 +843,9 @@ class TradingService:
         except Exception as e:
             logger.error(f"Error fetching position history: {e}", exc_info=True)
             raw_error = str(e)
-            cleaned_error = clean_error_message(raw_error)
             return {
                 "success": False,
-                "error": cleaned_error,
-                "raw_error": raw_error
+                "error": raw_error
             }
 
 

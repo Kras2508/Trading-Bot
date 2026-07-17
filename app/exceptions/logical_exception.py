@@ -1,6 +1,7 @@
 from typing import Any, Optional
 from app.exceptions.error_code import ErrorCode
 from app.exceptions.error_exception import ErrorException
+from app.utils.error_parser import clean_error_message
 
 class LogicalException(ErrorException):
     """
@@ -23,8 +24,25 @@ class ExchangeException(LogicalException):
         message: str,
         error_details: Optional[Any] = None
     ):
+        cleaned_message = clean_error_message(message)
+        
+        # Check if it's a timestamp error
+        error_text = (message or "").lower()
+        is_timestamp_error = (
+            "timestamp" in error_text
+            or "-1021" in error_text
+            or "recvwindow" in error_text
+        )
+        if is_timestamp_error:
+            cleaned_message = (
+                f"{cleaned_message}\n\n"
+                "💡 Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
+                "Vui lòng sync thời gian máy tính bằng script FIX_TIMESTAMP_BINANCE.bat (Run as Administrator), "
+                "sau đó restart backend và thử lại."
+            )
+            
         super().__init__(
-            message=message,
+            message=cleaned_message,
             error_code=ErrorCode.EXCHANGE_ERROR,
             error_details=error_details
         )
