@@ -133,14 +133,16 @@ async def tradingview_webhook(
         
         if not order_result["success"]:
             error_msg = order_result.get("error")
-            logger.error(f"Failed to place order: {error_msg}")
+            hint = order_result.get("hint")
+            full_error = f"{error_msg}\n\n💡 {hint}" if hint else error_msg
+            logger.error(f"Failed to place order: {full_error}")
             
             # Log error
             activity_log_service.log_activity(
                 db=db,
                 level="error",
                 category="webhook",
-                message=error_msg,
+                message=full_error,
                 bot_config_id=config.id,
                 details=order_result
             )
@@ -148,16 +150,17 @@ async def tradingview_webhook(
             # Update bot status
             if bot_status:
                 bot_status.failed_orders += 1
-                bot_status.last_error = error_msg
+                bot_status.last_error = full_error
                 db.commit()
             
             # Send Telegram notification
             if config.enable_notifications:
-                telegram_service.send_error_alert(config.name, error_msg)
+                telegram_service.send_error_alert(config.name, full_error)
             
             raise ExchangeException(
                 message=error_msg,
-                error_details=order_result
+                error_details=order_result,
+                hint=hint
             )
         
         # Create order record
