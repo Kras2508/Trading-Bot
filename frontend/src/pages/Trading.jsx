@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Trading() {
   const { token } = useAuth()
@@ -20,6 +21,9 @@ export default function Trading() {
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false)
   const [loadingSymbols, setLoadingSymbols] = useState(false)
 
+  const { theme } = useTheme()
+  const [chartSymbol, setChartSymbol] = useState('BTC/USDT')
+
   useEffect(() => {
     if (token) {
       fetchConfigs()
@@ -29,6 +33,45 @@ export default function Trading() {
       setMessage({ type: 'danger', text: 'Vui lòng đăng nhập trước' })
     }
   }, [token])
+
+  const getTradingViewSymbol = () => {
+    const ex = (selectedConfig?.exchange || "binance").toUpperCase()
+    const sym = (chartSymbol || "BTCUSDT").replace("/", "").toUpperCase()
+    return `${ex}:${sym}`
+  }
+
+  // Embed TradingView Widget
+  useEffect(() => {
+    if (window.TradingView) {
+      const tvSymbol = getTradingViewSymbol()
+      try {
+        new window.TradingView.widget({
+          width: "100%",
+          height: "100%",
+          symbol: tvSymbol,
+          interval: "60",
+          timezone: "Asia/Ho_Chi_Minh",
+          theme: theme === "Tối" ? "dark" : "light",
+          style: "1",
+          locale: "vi",
+          enable_publishing: false,
+          hide_side_toolbar: false,
+          allow_symbol_change: true,
+          container_id: "tradingview-chart",
+        });
+      } catch (err) {
+        console.error("Failed to init TradingView widget:", err);
+      }
+    }
+    return () => {
+      const container = document.getElementById("tradingview-chart");
+      if (container) {
+        container.innerHTML = "";
+      }
+    };
+  }, [selectedConfig, chartSymbol, theme]);
+
+
 
   const getCommonSymbols = () => {
     return [
@@ -86,6 +129,7 @@ export default function Trading() {
         amount: config.amount || ''
       })
       setSymbolSearch(defaultSymbol)
+      setChartSymbol(defaultSymbol)
       // Load symbols from exchange if config has API credentials
       if (config.api_key_encrypted) {
         fetchSymbols(config.id)
@@ -120,6 +164,7 @@ export default function Trading() {
   const handleSymbolSelect = (symbol) => {
     setOrderForm({ ...orderForm, symbol })
     setSymbolSearch(symbol)
+    setChartSymbol(symbol)
     setShowSymbolDropdown(false)
   }
 
@@ -245,8 +290,29 @@ export default function Trading() {
   }, [])
 
   return (
-    <div>
-      <h2 className="mb-4">Đặt Lệnh Trading</h2>
+    <div className="container-fluid py-4" style={{ color: "var(--text-primary)" }}>
+      {/* Header */}
+      <div 
+        className="mb-4 border-0 shadow-lg position-relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)",
+          color: "white",
+          borderRadius: "16px",
+          padding: "2.5rem"
+        }}
+      >
+        <div className="row align-items-center">
+          <div className="col-md-8">
+            <h1 className="display-5 fw-bold mb-2 text-white">Đặt Lệnh Trading</h1>
+            <p className="lead mb-0 text-white opacity-75">
+              Đặt lệnh giao dịch thủ công nhanh chóng hoặc gửi tín hiệu giả lập trực tiếp lên sàn giao dịch.
+            </p>
+          </div>
+          <div className="col-md-4 text-md-end mt-3 mt-md-0">
+            <i className="bi bi-graph-up-arrow text-white" style={{ fontSize: "5rem", opacity: "0.2" }}></i>
+          </div>
+        </div>
+      </div>
 
       {message.text && (
         <div className={`alert alert-${message.type} alert-dismissible fade show`} role="alert">
@@ -277,11 +343,15 @@ export default function Trading() {
         </div>
       )}
 
-      <div className="row">
-        <div className="col-md-6">
-          <div className="card">
-            <div className="card-header">
-              <h5>Chọn Bot Config</h5>
+      <div className="row g-4">
+        {/* Left Column: Config, Manual Order Form, Webhook Test */}
+        <div className="col-lg-5 col-md-12">
+          {/* Card: Chọn Bot Config */}
+          <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: "12px", background: "var(--bg-secondary)" }}>
+            <div className="card-header border-0 bg-transparent pt-4 pb-0">
+              <h5 className="card-title fw-bold mb-0">
+                <i className="bi bi-gear-fill text-primary me-2"></i> Chọn Bot Config
+              </h5>
             </div>
             <div className="card-body">
               <select
@@ -298,31 +368,31 @@ export default function Trading() {
               </select>
 
               {selectedConfig && (
-                <div className="mt-3">
-                  <small className="text-muted">
+                <div className="mt-3 p-3 rounded bg-light-subtle" style={{ background: "rgba(255,255,255,0.02)" }}>
+                  <small className="text-muted d-block" style={{ lineHeight: "1.6" }}>
                     <strong>Sàn:</strong> {selectedConfig.exchange?.toUpperCase() || 'BINANCE'}<br />
                     <strong>Trade Mode:</strong>{' '}
                     {selectedConfig.trading_mode === 'futures' ? 'Futures' : 'Spot'}<br />
                     <strong>Symbol mặc định:</strong> {selectedConfig.symbol}<br />
                     <strong>Amount mặc định:</strong> {selectedConfig.amount}<br />
-                    <strong>SL:</strong> {selectedConfig.stop_loss_percent}% | 
-                    <strong> TP:</strong> {selectedConfig.take_profit_percent}%
+                    <strong>SL / TP:</strong> {selectedConfig.stop_loss_percent}% / {selectedConfig.take_profit_percent}%
                   </small>
                 </div>
               )}
             </div>
           </div>
-        </div>
 
-        <div className="col-md-6">
-          <div className="card">
-            <div className="card-header">
-              <h5>Thông Tin Lệnh</h5>
+          {/* Card: Đặt lệnh thủ công */}
+          <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: "12px", background: "var(--bg-secondary)" }}>
+            <div className="card-header border-0 bg-transparent pt-4 pb-0">
+              <h5 className="card-title fw-bold mb-0">
+                <i className="bi bi-wallet2 text-success me-2"></i> Đặt Lệnh Thủ Công
+              </h5>
             </div>
             <div className="card-body">
               <form onSubmit={(e) => e.preventDefault()}>
                 <div className="mb-3">
-                  <label className="form-label">Symbol</label>
+                  <label className="form-label small fw-bold text-secondary text-uppercase mb-1">Symbol</label>
                   <div className="position-relative">
                     <input
                       type="text"
@@ -331,8 +401,20 @@ export default function Trading() {
                       onChange={(e) => {
                         const value = e.target.value
                         setSymbolSearch(value)
-                        setOrderForm({ ...orderForm, symbol: value })
                         setShowSymbolDropdown(value.length > 0 && filteredSymbols.length > 0)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          setChartSymbol(symbolSearch)
+                          setOrderForm((prev) => ({ ...prev, symbol: symbolSearch }))
+                          setShowSymbolDropdown(false)
+                        }
+                      }}
+                      onBlur={() => {
+                        setChartSymbol(symbolSearch)
+                        setOrderForm((prev) => ({ ...prev, symbol: symbolSearch }))
+                        setShowSymbolDropdown(false)
                       }}
                       onFocus={() => {
                         if (symbolSearch.length > 0 && filteredSymbols.length > 0) {
@@ -353,7 +435,8 @@ export default function Trading() {
                           zIndex: 1000, 
                           maxHeight: '200px', 
                           overflowY: 'auto',
-                          backgroundColor: 'white',
+                          backgroundColor: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
                           marginTop: '2px'
                         }}
                       >
@@ -361,9 +444,12 @@ export default function Trading() {
                           <button
                             key={symbol}
                             type="button"
-                            className="list-group-item list-group-item-action"
-                            onClick={() => handleSymbolSelect(symbol)}
-                            style={{ cursor: 'pointer', border: 'none' }}
+                            className="list-group-item list-group-item-action border-0"
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              handleSymbolSelect(symbol)
+                            }}
+                            style={{ cursor: 'pointer', background: 'transparent', color: 'var(--text-primary)' }}
                           >
                             {symbol}
                           </button>
@@ -371,20 +457,19 @@ export default function Trading() {
                       </div>
                     )}
                   </div>
-                  <small className="text-muted">
+                  <small className="text-muted d-block mt-1">
                     {selectedConfig ? (
                       <>
-                        Gõ để tìm kiếm symbol. Để trống sẽ dùng symbol từ config ({selectedConfig.symbol})
-                        {symbols.length > 30 && ` | ${symbols.length} symbols từ ${selectedConfig.exchange?.toUpperCase()}`}
+                        Gõ để tìm kiếm. Để trống sẽ dùng symbol từ config ({selectedConfig.symbol})
                       </>
                     ) : (
-                      `Gõ để tìm kiếm. ${symbols.length} symbols phổ biến có sẵn`
+                      `Gõ để tìm kiếm. ${symbols.length} symbols phổ biến`
                     )}
                   </small>
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Order Type</label>
+                  <label className="form-label small fw-bold text-secondary text-uppercase mb-1">Order Type</label>
                   <select
                     className="form-select"
                     value={orderForm.order_type}
@@ -396,7 +481,7 @@ export default function Trading() {
                 </div>
 
                 <div className="mb-3">
-                  <label className="form-label">Amount</label>
+                  <label className="form-label small fw-bold text-secondary text-uppercase mb-1">Amount</label>
                   <input
                     type="number"
                     className="form-control"
@@ -406,14 +491,14 @@ export default function Trading() {
                     placeholder="Nhập số lượng"
                     required
                   />
-                  <small className="text-muted">
+                  <small className="text-muted d-block mt-1">
                     Để trống sẽ dùng amount từ config
                   </small>
                 </div>
 
                 {orderForm.order_type === 'limit' && (
                   <div className="mb-3">
-                    <label className="form-label">Price</label>
+                    <label className="form-label small fw-bold text-secondary text-uppercase mb-1">Price</label>
                     <input
                       type="number"
                       className="form-control"
@@ -426,7 +511,7 @@ export default function Trading() {
                   </div>
                 )}
 
-                <div className="alert alert-warning text-center">
+                <div className="alert alert-warning text-center small py-2 border-0 mb-3" style={{ background: "rgba(255, 193, 7, 0.1)", color: "#ffc107" }}>
                   <strong>⚠️ Cảnh báo:</strong> Đây là lệnh THẬT trên {selectedConfig?.exchange?.toUpperCase() || 'SÀN GIAO DỊCH'}!
                 </div>
 
@@ -449,6 +534,29 @@ export default function Trading() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: TradingView Technical Chart Widget */}
+        <div className="col-lg-7 col-md-12">
+          <div className="card border-0 shadow-sm mb-4" style={{ borderRadius: "12px", background: "var(--bg-secondary)", height: "calc(100% - 20px)", minHeight: "600px" }}>
+            <div className="card-header border-0 bg-transparent pt-4 pb-0">
+              <h5 className="card-title fw-bold mb-0">
+                <i className="bi bi-graph-up text-primary me-2"></i> Biểu đồ Kỹ thuật TradingView
+              </h5>
+            </div>
+            <div className="card-body d-flex flex-column h-100">
+              <p className="text-muted small">
+                Biểu đồ thời gian thực cho symbol đang được chọn (<strong>{getTradingViewSymbol()}</strong>). Bạn có thể đổi symbol trực tiếp trong biểu đồ hoặc chọn config khác.
+              </p>
+              
+              <div 
+                className="rounded overflow-hidden border flex-grow-1 d-flex flex-column"
+                style={{ background: "rgba(0,0,0,0.1)", minHeight: "450px" }}
+              >
+                <div id="tradingview-chart" className="flex-grow-1" style={{ width: "100%" }}></div>
+              </div>
             </div>
           </div>
         </div>

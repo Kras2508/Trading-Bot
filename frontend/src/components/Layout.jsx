@@ -63,6 +63,13 @@ export default function Layout() {
             <i className="bi bi-journal-text me-2"></i>
             Nhật Ký / Lỗi
           </Link>
+          <Link
+            to="/webhook"
+            className={`nav-link ${isActive("/webhook") ? "active" : ""}`}
+          >
+            <i className="bi bi-link-45deg me-2"></i>
+            Kết nối TradingView
+          </Link>
         </nav>
         <div className="mt-auto pt-4">
           <div className="mb-3">
