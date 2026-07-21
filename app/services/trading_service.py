@@ -187,31 +187,33 @@ class TradingService:
             # If we get here, all retries failed
             logger.error(f"Failed to place order after {retry_count} attempts: {last_error}")
             raw_error = str(last_error)
+            hint = None
             if self._is_timestamp_error(raw_error):
-                raw_error = (
-                    f"{raw_error}\n\n"
-                    "💡 Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
+                hint = (
+                    "Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
                     "Vui lòng sync thời gian máy tính bằng script FIX_TIMESTAMP_BINANCE.bat (Run as Administrator), "
                     "sau đó restart backend và thử lại."
                 )
             
             return {
                 "success": False,
-                "error": raw_error
+                "error": raw_error,
+                "hint": hint
             }
         except Exception as e:
             logger.error(f"Failed to place order (unexpected): {e}", exc_info=True)
             raw_error = str(e)
+            hint = None
             if self._is_timestamp_error(raw_error):
-                raw_error = (
-                    f"{raw_error}\n\n"
-                    "💡 Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
+                hint = (
+                    "Hệ thống đã tự retry và sync thời gian với Binance nhưng vẫn thất bại. "
                     "Vui lòng sync thời gian máy tính bằng script FIX_TIMESTAMP_BINANCE.bat (Run as Administrator), "
                     "sau đó restart backend và thử lại."
                 )
             return {
                 "success": False,
-                "error": raw_error
+                "error": raw_error,
+                "hint": hint
             }
 
     def cancel_order(self, config: BotConfig, order: Order) -> Dict:

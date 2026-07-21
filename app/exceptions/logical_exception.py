@@ -22,16 +22,12 @@ class ExchangeException(LogicalException):
     def __init__(
         self,
         message: str,
-        error_details: Optional[Any] = None
+        error_details: Optional[Any] = None,
+        hint: Optional[str] = None
     ):
-        # Support optional pre-appended hints safely
-        hint = ""
-        if "\n\n💡" in message:
-            parts = message.split("\n\n💡", 1)
-            message = parts[0]
-            hint = "\n\n💡" + parts[1]
-            
-        cleaned_message = clean_error_message(message) + hint
+        cleaned_message = clean_error_message(message)
+        if hint:
+            cleaned_message += f"\n\n💡 {hint}"
             
         super().__init__(
             message=cleaned_message,
