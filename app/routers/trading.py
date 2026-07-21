@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -227,7 +227,7 @@ async def place_order_direct(
             "order_status": db_order.status
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Place order error: {e}", exc_info=True)
@@ -343,7 +343,7 @@ async def close_order(
             "close_price": close_price
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Close order error: {e}", exc_info=True)
@@ -409,7 +409,7 @@ async def cancel_order(
             "order_id": order_id,
             "exchange_order": cancel_result.get("order")
         }
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Cancel order error: {e}", exc_info=True)
@@ -458,7 +458,7 @@ async def get_symbols(
             "trading_mode": config.trading_mode
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Get symbols error: {e}", exc_info=True)
@@ -522,7 +522,7 @@ async def check_order_status(
             "order_data": status_result.get("order")
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Check order error: {e}", exc_info=True)
@@ -631,7 +631,7 @@ async def refresh_pnl(
             "order_status": order.status
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Refresh PnL error: {e}", exc_info=True)
@@ -693,7 +693,7 @@ async def place_order_pine_script(
         
         # Validate request using Pydantic
         request = PlaceOrderRequest(**body_json)
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Error parsing request body: {str(e)}")
@@ -906,7 +906,7 @@ async def place_order_pine_script(
             "order_status": db_order.status
         }
     
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Pine Script place order error: {e}", exc_info=True)

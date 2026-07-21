@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from typing import List, Optional
@@ -87,7 +87,7 @@ async def get_order_history(
                     order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return orders
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Error fetching order history: {e}", exc_info=True)
@@ -166,7 +166,7 @@ async def get_completed_orders(
                     order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return orders
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Error fetching completed orders: {e}", exc_info=True)
@@ -210,7 +210,7 @@ async def get_order(
                 order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return order
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Error fetching order {order_id}: {e}", exc_info=True)
@@ -321,7 +321,7 @@ async def list_orders(
                     order.bot_config_name = f"{exchange.capitalize()} - Bot #{order.bot_config_id}"
         
         return orders
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Error listing orders: {e}", exc_info=True)

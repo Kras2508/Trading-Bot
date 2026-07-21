@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -125,7 +125,7 @@ async def list_configs(
 
         logger.info(f"Found {len(configs)} configs for user {username}")
         return configs
-    except (HTTPException, ErrorException):
+    except ErrorException:
         raise
     except Exception as e:
         logger.error(f"Error listing configs: {e}", exc_info=True)
