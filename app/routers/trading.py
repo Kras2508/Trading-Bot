@@ -16,7 +16,7 @@ from app.services.telegram_service import telegram_service
 from app.core.security import verify_token, check_ip_whitelist
 from app.exceptions.error_code import ErrorCode
 from app.exceptions.error_exception import ErrorException
-from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException
+from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException, ForbiddenException, ValidationException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -46,9 +46,7 @@ async def place_order_direct(
         ).first()
         
         if not config:
-            raise NotFoundException(
-                message=f"Bot config {request.bot_config_id} not found or inactive"
-            )
+            raise NotFoundException(message=f"Bot config {request.bot_config_id} not found or inactive")
         
         # Check if bot is paused
         bot_status = db.query(BotStatus).filter(
@@ -56,23 +54,17 @@ async def place_order_direct(
         ).first()
         
         if bot_status and bot_status.is_paused:
-            raise BadRequestException(
-                message=f"Bot {config.name} is paused"
-            )
+            raise BadRequestException(message=f"Bot {config.name} is paused")
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise BadRequestException(
-                message="Bot config missing API credentials. Please add API key and secret."
-            )
+            raise BadRequestException(message="Bot config missing API credentials. Please add API key and secret.")
         
         # Use provided amount or config amount (if amount is 0 or None, use config amount)
         amount = request.amount if request.amount and request.amount > 0 else config.amount
         
         if not amount or amount <= 0:
-            raise BadRequestException(
-                message="Amount must be greater than 0. Please provide amount in request or configure it in bot config."
-            )
+            raise BadRequestException(message="Amount must be greater than 0. Please provide amount in request or configure it in bot config.")
         
         # Use provided symbol or config symbol
         symbol = request.symbol if request.symbol else config.symbol
@@ -82,9 +74,7 @@ async def place_order_direct(
         price = request.price if order_type == "limit" else None
         
         if order_type == "limit" and not price:
-            raise BadRequestException(
-                message="Price is required for limit orders"
-            )
+            raise BadRequestException(message="Price is required for limit orders")
         
         # Place order on exchange
         order_result = trading_service.place_order(
@@ -122,11 +112,7 @@ async def place_order_direct(
             if config.enable_notifications:
                 telegram_service.send_error_alert(config.name, full_error)
             
-            raise ExchangeException(
-                message=error_msg,
-                error_details=order_result,
-                hint=hint
-            )
+            raise ExchangeException(message=error_msg, error_details=order_result)
         
         # Get order data
         order_data = order_result["order"]
@@ -260,31 +246,22 @@ async def close_order(
         # Get order
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise NotFoundException(
-                message=f"Order {order_id} not found"
-            )
+            raise NotFoundException(message=f"Order {order_id} not found")
         
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise NotFoundException(
-                message="Bot config not found"
-            )
+            raise NotFoundException(message="Bot config not found")
         
         # Check if order is already closed
         if order.status in ["cancelled", "closed"]:
-            raise BadRequestException(
-                message=f"Order {order_id} is already {order.status}"
-            )
+            raise BadRequestException(message=f"Order {order_id} is already {order.status}")
         
         # Close position
         close_result = trading_service.close_position(config, order)
         
         if not close_result["success"]:
-            raise ExchangeException(
-                message=f"Failed to close order: {close_result.get('error')}",
-                error_details=close_result
-            )
+            raise ExchangeException(message=f"Failed to close order: {close_result.get('error')}", error_details=close_result)
         
         # Get PnL from exchange (Cách 2: Lấy từ sàn và lưu vào DB)
         # Ưu tiên dùng Binance Futures API nếu là futures và có exchange_order_id
@@ -366,32 +343,21 @@ async def cancel_order(
     try:
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise NotFoundException(
-                message=f"Order {order_id} not found"
-            )
+            raise NotFoundException(message=f"Order {order_id} not found")
 
         if order.status != "pending":
-            raise BadRequestException(
-                message=f"Order {order_id} is not pending"
-            )
+            raise BadRequestException(message=f"Order {order_id} is not pending")
 
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise NotFoundException(
-                message="Bot config not found"
-            )
+            raise NotFoundException(message="Bot config not found")
 
         if not order.exchange_order_id:
-            raise BadRequestException(
-                message="Order does not have exchange order ID"
-            )
+            raise BadRequestException(message="Order does not have exchange order ID")
 
         cancel_result = trading_service.cancel_order(config, order)
         if not cancel_result["success"]:
-            raise ExchangeException(
-                message=cancel_result.get("error"),
-                error_details=cancel_result
-            )
+            raise ExchangeException(message=cancel_result.get("error"), error_details=cancel_result)
 
         order.status = "cancelled"
         order.closed_at = datetime.utcnow()
@@ -435,24 +401,17 @@ async def get_symbols(
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == config_id).first()
         if not config:
-            raise NotFoundException(
-                message=f"Bot config {config_id} not found"
-            )
+            raise NotFoundException(message=f"Bot config {config_id} not found")
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise BadRequestException(
-                message="Bot config missing API credentials. Cannot fetch symbols."
-            )
+            raise BadRequestException(message="Bot config missing API credentials. Cannot fetch symbols.")
         
         # Get symbols from exchange
         result = trading_service.get_symbols(config)
         
         if not result["success"]:
-            raise ExchangeException(
-                message=result.get("error"),
-                error_details=result
-            )
+            raise ExchangeException(message=result.get("error"), error_details=result)
         
         return {
             "symbols": result["symbols"],
@@ -484,30 +443,21 @@ async def check_order_status(
         # Get order
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise NotFoundException(
-                message=f"Order {order_id} not found"
-            )
+            raise NotFoundException(message=f"Order {order_id} not found")
         
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise NotFoundException(
-                message="Bot config not found"
-            )
+            raise NotFoundException(message="Bot config not found")
         
         if not order.exchange_order_id:
-            raise BadRequestException(
-                message="Order does not have exchange order ID"
-            )
+            raise BadRequestException(message="Order does not have exchange order ID")
         
         # Check order status on exchange
         status_result = trading_service.check_order_status(config, order.exchange_order_id)
         
         if not status_result["success"]:
-            raise ExchangeException(
-                message=status_result.get("error"),
-                error_details=status_result
-            )
+            raise ExchangeException(message=status_result.get("error"), error_details=status_result)
         
         # Update order in DB if status changed
         exchange_status = status_result.get("status")
@@ -553,22 +503,16 @@ async def refresh_pnl(
         # Get order
         order = db.query(Order).filter(Order.id == order_id).first()
         if not order:
-            raise NotFoundException(
-                message=f"Order {order_id} not found"
-            )
+            raise NotFoundException(message=f"Order {order_id} not found")
         
         # Get config
         config = db.query(BotConfig).filter(BotConfig.id == order.bot_config_id).first()
         if not config:
-            raise NotFoundException(
-                message="Bot config not found"
-            )
+            raise NotFoundException(message="Bot config not found")
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise BadRequestException(
-                message="Bot config missing API credentials"
-            )
+            raise BadRequestException(message="Bot config missing API credentials")
         
         # Get PnL from exchange
         # Ưu tiên dùng Binance Futures API nếu là futures và có exchange_order_id
@@ -582,10 +526,7 @@ async def refresh_pnl(
             pnl_result = trading_service.get_pnl_from_exchange(config, order)
         
         if not pnl_result["success"]:
-            raise ExchangeException(
-                message=pnl_result.get("error"),
-                error_details=pnl_result
-            )
+            raise ExchangeException(message=pnl_result.get("error"), error_details=pnl_result)
         
         # Update PnL in database
         pnl = pnl_result.get("pnl", 0.0)
@@ -690,9 +631,7 @@ async def place_order_pine_script(
             # If not JSON, might be plain text - try to parse as key=value format
             logger.warning(f"Request body is not valid JSON, attempting to parse as plain text: {body_str}")
             # If it's plain text, return error with helpful message
-            raise ValidationException(
-                message=f"Invalid JSON format. Expected JSON, got: {body_str[:100]}"
-            )
+            raise ValidationException(message=f"Invalid JSON format. Expected JSON, got: {body_str[:100]}")
         
         # Validate request using Pydantic
         request = PlaceOrderRequest(**body_json)
@@ -700,9 +639,7 @@ async def place_order_pine_script(
         raise
     except Exception as e:
         logger.error(f"Error parsing request body: {str(e)}")
-        raise ValidationException(
-            message=f"Invalid request format: {str(e)}"
-        )
+        raise ValidationException(message=f"Invalid request format: {str(e)}")
     
     try:
         # Get bot config
@@ -712,9 +649,7 @@ async def place_order_pine_script(
         ).first()
         
         if not config:
-            raise NotFoundException(
-                message=f"Bot config {request.bot_config_id} not found or inactive"
-            )
+            raise NotFoundException(message=f"Bot config {request.bot_config_id} not found or inactive")
         
         # Check if bot is paused
         bot_status = db.query(BotStatus).filter(
@@ -722,23 +657,17 @@ async def place_order_pine_script(
         ).first()
         
         if bot_status and bot_status.is_paused:
-            raise BadRequestException(
-                message=f"Bot {config.name} is paused"
-            )
+            raise BadRequestException(message=f"Bot {config.name} is paused")
         
         # Check API credentials
         if not config.api_key_encrypted or not config.api_secret_encrypted:
-            raise BadRequestException(
-                message="Bot config missing API credentials. Please add API key and secret."
-            )
+            raise BadRequestException(message="Bot config missing API credentials. Please add API key and secret.")
         
         # Use provided amount or config amount (if amount is 0 or None, use config amount)
         amount = request.amount if request.amount and request.amount > 0 else config.amount
         
         if not amount or amount <= 0:
-            raise BadRequestException(
-                message="Amount must be greater than 0. Please provide amount in request or configure it in bot config."
-            )
+            raise BadRequestException(message="Amount must be greater than 0. Please provide amount in request or configure it in bot config.")
         
         # Use provided symbol or config symbol
         symbol = request.symbol if request.symbol else config.symbol
@@ -748,9 +677,7 @@ async def place_order_pine_script(
         price = request.price if order_type == "limit" else None
         
         if order_type == "limit" and not price:
-            raise BadRequestException(
-                message="Price is required for limit orders"
-            )
+            raise BadRequestException(message="Price is required for limit orders")
         
         # Place order on exchange
         order_result = trading_service.place_order(
@@ -788,11 +715,7 @@ async def place_order_pine_script(
             if config.enable_notifications:
                 telegram_service.send_error_alert(config.name, full_error)
             
-            raise ExchangeException(
-                message=error_msg,
-                error_details=order_result,
-                hint=hint
-            )
+            raise ExchangeException(message=error_msg, error_details=order_result)
         
         # Get order data
         order_data = order_result["order"]
