@@ -12,11 +12,11 @@ from app.services.trading_service import trading_service
 from app.services.trailing_service import trailing_service
 from app.services.telegram_service import telegram_service
 from app.services.activity_log_service import activity_log_service
-from app.core.security import check_ip_whitelist, verify_token
+from app.core.security import verify_token
 from app.core.config import settings
 from app.exceptions.error_code import ErrorCode
 from app.exceptions.error_exception import ErrorException
-from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException, ForbiddenException
+from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException, ForbiddenException, UnauthorizedException
 from app.models.system_setting import SystemSetting
 from pydantic import BaseModel
 
@@ -41,25 +41,6 @@ def check_duplicate_order(db: Session, config_id: int, symbol: str) -> bool:
     return open_order is not None
 
 
-@router.post("/tradingview")
-async def tradingview_webhook(
-    request: Request,
-    payload: Dict,
-    db: Session = Depends(get_db)
-):
-    """
-    TradingView webhook endpoint
-    Reads configuration directly from DB when receiving alert
-    """
-    # IP whitelist check
-    client_ip = request.client.host
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",")[0].strip()
-    
-    if not check_ip_whitelist(client_ip):
-        logger.warning(f"Webhook request from unauthorized IP: {client_ip}")
-        raise ForbiddenException(message="IP address not allowed")
 def check_ip_whitelist_db(client_ip: str, db: Session) -> bool:
     sys_setting = db.query(SystemSetting).first()
     if not sys_setting:
@@ -178,9 +159,9 @@ async def execute_webhook_signal(payload: Dict, client_ip: str, db: Session, sim
                             bot_config_id=config.id,
                             details=close_res
                         )
-                        raise HTTPException(
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=error_msg
+                        raise ExchangeException(
+                            message=error_msg,
+                            error_details=close_res
                         )
                     pnl = close_res.get("pnl", 0.0)
                     pnl_percent = close_res.get("pnl_percent", 0.0)
@@ -477,10 +458,7 @@ async def tradingview_webhook(
     
     if not check_ip_whitelist_db(client_ip, db):
         logger.warning(f"Webhook request from unauthorized IP: {client_ip}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="IP address not allowed"
-        )
+        raise ForbiddenException(message="IP address not allowed")
     
     # Webhook Passphrase check
     sys_setting = db.query(SystemSetting).first()
@@ -497,10 +475,7 @@ async def tradingview_webhook(
                 message="Unauthorized webhook request: Invalid passphrase",
                 details={"client_ip": client_ip}
             )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing webhook passphrase"
-            )
+            raise UnauthorizedException(message="Invalid or missing webhook passphrase")
     
     return await execute_webhook_signal(payload, client_ip, db)
 
@@ -527,10 +502,7 @@ async def test_webhook_trigger(
     if passphrase:
         payload_passphrase = payload.get("passphrase")
         if payload_passphrase != passphrase:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing webhook passphrase"
-            )
+            raise UnauthorizedException(message="Invalid or missing webhook passphrase")
             
     simulate_success = payload.get("simulate_success", False)
     return await execute_webhook_signal(payload, client_ip, db, simulate_success=simulate_success)
