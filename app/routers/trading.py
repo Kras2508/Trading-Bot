@@ -16,7 +16,7 @@ from app.services.telegram_service import telegram_service
 from app.core.security import verify_token, check_ip_whitelist
 from app.exceptions.error_code import ErrorCode
 from app.exceptions.error_exception import ErrorException
-from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException
+from app.exceptions.logical_exception import ExchangeException, NotFoundException, BadRequestException, ForbiddenException, ValidationException
 import logging
 
 logger = logging.getLogger(__name__)
