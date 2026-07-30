@@ -16,6 +16,7 @@ import Orders from "./pages/Orders";
 import Monitoring from "./pages/Monitoring";
 import Trading from "./pages/Trading";
 import ActivityLogs from "./pages/ActivityLogs";
+import WebhookConnect from "./pages/WebhookConnect";
 import Layout from "./components/Layout";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -46,6 +47,7 @@ function AppRoutes() {
         <Route path="trading" element={<Trading />} />
         <Route path="monitoring" element={<Monitoring />} />
         <Route path="activity-logs" element={<ActivityLogs />} />
+        <Route path="webhook" element={<WebhookConnect />} />
       </Route>
     </Routes>
   );

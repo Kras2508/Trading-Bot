@@ -1,6 +1,7 @@
 from typing import Any, Optional
 from app.exceptions.error_code import ErrorCode
 from app.exceptions.error_exception import ErrorException
+from app.utils.error_parser import clean_error_message
 
 class LogicalException(ErrorException):
     """
@@ -21,10 +22,15 @@ class ExchangeException(LogicalException):
     def __init__(
         self,
         message: str,
-        error_details: Optional[Any] = None
+        error_details: Optional[Any] = None,
+        hint: Optional[str] = None
     ):
+        cleaned_message = clean_error_message(message)
+        if hint:
+            cleaned_message += f"\n\n💡 {hint}"
+            
         super().__init__(
-            message=message,
+            message=cleaned_message,
             error_code=ErrorCode.EXCHANGE_ERROR,
             error_details=error_details
         )

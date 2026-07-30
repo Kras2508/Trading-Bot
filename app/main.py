@@ -20,15 +20,59 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+def init_system_settings():
+    from app.database import SessionLocal
+    from app.models.system_setting import SystemSetting
+    from app.core.config import settings
+    import secrets
+    
+    db = SessionLocal()
+    try:
+        existing = db.query(SystemSetting).first()
+        if not existing:
+            allowed_ips_str = ",".join(settings.ALLOWED_IPS) if isinstance(settings.ALLOWED_IPS, list) else str(settings.ALLOWED_IPS)
+            
+            passphrase = settings.WEBHOOK_PASSPHRASE
+            if not passphrase or passphrase.strip() == "":
+                passphrase = secrets.token_hex(16)
+                logger.info(f"Generated secure default Webhook Passphrase: {passphrase}")
+                
+            db_settings = SystemSetting(
+                id=1,
+                webhook_passphrase=passphrase,
+                enable_ip_whitelist=settings.ENABLE_IP_WHITELIST,
+                allowed_ips=allowed_ips_str
+            )
+            db.add(db_settings)
+            db.commit()
+            logger.info("Default system settings initialized in DB")
+    except Exception as e:
+        logger.error(f"Failed to initialize system settings: {e}")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up application...")
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created/verified")
+    init_system_settings()
+    
+    # Start background order status sync loop
+    import asyncio
+    from app.services.order_sync_worker import run_order_sync_loop
+    sync_task = asyncio.create_task(run_order_sync_loop())
+    
     yield
     # Shutdown
     logger.info("Shutting down application...")
+    sync_task.cancel()
+    try:
+        await sync_task
+    except asyncio.CancelledError:
+        logger.info("Background order sync task cancelled successfully")
 
 
 app = FastAPI(

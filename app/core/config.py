@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Exchange API (encrypted in DB, these are defaults)
     DEFAULT_EXCHANGE: str = "binance"
     
+    # Webhook
+    WEBHOOK_PASSPHRASE: str = Field(default="")
+    
     # Encryption
     ENCRYPTION_KEY: str = Field(default="your-32-byte-encryption-key-change-this")
     
