@@ -19,7 +19,7 @@ MCP_POLL_INTERVAL=3.0                     # Chu kỳ quét chỉ báo (giây)
 MCP_RSI_BUY_THRESHOLD=30.0               # Ngưỡng RSI bắn lệnh MUA
 MCP_RSI_SELL_THRESHOLD=70.0              # Ngưỡng RSI bắn lệnh BÁN
 
-TRADINGVIEW_EXE_PATH=D:\Study\TradingView\TradingView.exe  # Đường dẫn TradingView Desktop
+TRADINGVIEW_EXE_PATH=D:\TradingView\TradingView.exe  # Đường dẫn TradingView Desktop
 ```
 
 > `WEBHOOK_PASSPHRASE` đã có sẵn trong `.env` — Bridge tự đọc biến này để gắn vào payload.
@@ -36,13 +36,13 @@ Bản TradingView cài từ **Microsoft Store (MSIX)** bị Windows sandbox và 
 # Lấy path cài đặt
 $src = (Get-AppxPackage -Name 'TradingView.Desktop').InstallLocation
 
-# Copy ra D:\Study\TradingView
-Copy-Item "$src\*" "D:\Study\TradingView" -Recurse -Force
+# Copy ra nơi muốn lưu (ví dụ: D:\TradingView)
+Copy-Item "$src\*" "D:\TradingView" -Recurse -Force
 ```
 
 Sau đó set trong `.env`:
 ```env
-TRADINGVIEW_EXE_PATH=D:\Study\TradingView\TradingView.exe
+TRADINGVIEW_EXE_PATH=D:\TradingView\TradingView.exe
 ```
 
 ---

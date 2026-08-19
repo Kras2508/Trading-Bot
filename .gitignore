@@ -79,3 +79,8 @@ logs/
 *_SECRET*.py
 *_CREDENTIALS*.py
 
+# Report
+Report_TTNT/
+
+# External MCP dependencies (clone separately per MCP_GUIDE.md)
+tradingview-mcp/
